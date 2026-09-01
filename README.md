@@ -25,7 +25,7 @@ wget '10.5281/zenodo.22199562' -O GVHoP_database_v1.0.zip
 unzip GVHoP_database_v1.0.zip
 ```
 
-## Example run
+### Example run
 
 #### Activate GVHoP environment:
 
@@ -52,17 +52,17 @@ python RunGVHoP/parse_hmmsearch.py --in_dir=../output_hmm/ --in_file_ext=domout 
 
 #### Construct feature sets (GV-euk signals) from sequence data:
 
-📝 2-1. This will generate the shell scripts for DIAMOND blastp execution in sh_dir
+📝 This will generate the shell scripts for DIAMOND blastp execution in sh_dir
 ```{bash}
 python3 RunGVHoP/cmd_diamond.py --task=blastp --in_dir=../example_MAGs/ --out_dir=../output_blastp/ --sh_dir=../sh/blastp/ --in_file_ext=faa --out_file_ext=txt --db_dir=../GVHoP_database_v1.0/GVHoP_GVEUKs.dmnd --outfmt=6 --threshold=8 --opt="--evalue 1e-5" --n_job=8
 ```
 
-🏃 2-2. Execute diamond blastp
+🏃 Execute diamond blastp
 ```{bash}
 python RunGVHoP/execute_sh.py --sh_dir=../sh/blastp/ --log_dir=../execute/blastp/
 ```
 
-💻 2-3. Parse feature matrix
+💻 Parse feature matrix
 ```{bash}
 python RunGVHoP/parse_blasthits.py --blast_in=../output_blastp/ --in_file_ext=txt --column_names=../source_data/features/GVHoP_GVEUKs_all.tsv --outfile=../source_data/example_inputs/ex_GVEUKs.tsv
 ```
