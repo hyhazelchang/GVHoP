@@ -3,10 +3,6 @@
 # cmd_hmm.py
 
 # Hsin-Ying Chang <hyhazelchang@gmail.com>
-# v1 2025/08/01
-
-# Usage: python3 cmd_hmm.py --hmm_dir=../hmm/bin/ --in_dir=../test_MAGs/ --out_dir=../outdir/hmms/ --sh_dir=../sh/hmmbuild/ --in_file_ext=fasta --out_file_ext=hmm --opt=hmmbuild --n_job=20
-
 
 import argparse
 import os
@@ -17,42 +13,40 @@ def main():
         description=("Make the shscript for hmm execution."),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--hmm_dir",
-                        default=None,
-                        type=str,
-                        help="HMM file directory. Please provide absolute path.")
     parser.add_argument("--in_dir",
-                        default=None,
+                        default="../example_MAGs/",
+                        required=True,
                         type=str,
-                        help="Directory containing input files (the file should have fasta extension). Please provide absolute path.")
+                        help="Directory containing input files (the file should have fasta extension).")
     parser.add_argument("--db_dir",
-                        default=None,
-                        required=False,
+                        default="../GVHoP_database_v1.0/GVHoP_GVOGs.hmm",
+                        required=True,
                         type=str,
-                        help="Directory containing database files (the file should have fasta extension). Please provide absolute path.")
+                        help="Directory containing database files.")
     parser.add_argument("--out_dir",
-                        default=None,
+                        default="../output_hmm/",
                         type=str,
-                        help="Output directory. Please provide absolute path.")
+                        help="Output directory.")
     parser.add_argument("--sh_dir",
-                        default=None,
+                        default="../sh/hmmsearch/",
                         type=str,
-                        help="Directory for shell scripts. Please provide absolute path.")
+                        help="Directory for shell scripts.")
     parser.add_argument("--in_file_ext",
-                        default="fasta",
+                        required=True,
+                        default="faa",
                         type=str)
     parser.add_argument("--out_file_ext",
-                        default="hmm",
+                        default="domout",
                         type=str)
     parser.add_argument("--opt",
-                        default=None,
-                        type=str)    
+                        default="hmmsearch --cpu 10 -E 1e-5 --domtblout",
+                        required=True,
+                        type=str)
     parser.add_argument("--n_job",
-                        default=1,
+                        default=2,
                         type=int)
 
     args = parser.parse_args()
-    hmm_dir = args.hmm_dir
     in_dir = args.in_dir
     db_dir = args.db_dir
     out_dir = args.out_dir
@@ -75,13 +69,10 @@ def main():
         count += 1
         file_name = file.replace(in_dir, "")
         file_name = file_name.replace(f".{in_file_ext}", "")
-        if db_dir:
-            hmm_cmd.append(hmm_dir + opt + " " + out_dir + file_name + "." + out_file_ext + " " + db_dir + " " + file)
-        else:
-            hmm_cmd.append(hmm_dir + opt + " " + out_dir + file_name + "." + out_file_ext + " " + file)
+        hmm_cmd.append(opt + " " + out_dir + file_name + "." + out_file_ext + " " + db_dir + " " + file)
 
     # print out job scripts
-    os.system("mkdir -p " + sh_dir)
+    os.makedirs(sh_dir, exist_ok=True)
     quo = int(count / n_job)
     mod = int(count % n_job)
     cmd_num = 0
@@ -97,6 +88,9 @@ def main():
                 job.write(hmm_cmd[cmd_num] + "\n")
                 cmd_num += 1
             job.close()
+    print(f"The shell scripts for hmm execution have been generated in {sh_dir}.")
+    print(f"Please check the generated scripts and run the execute_sh.py script to execute hmmsearch.")
+    print(f"Example: python execute_sh.py --sh_dir={sh_dir} --log_dir=../execute/hmmsearch/")
 
 if __name__ == "__main__":
     main()

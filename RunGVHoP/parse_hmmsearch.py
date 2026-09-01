@@ -7,8 +7,6 @@
 
 # ref: Moniruzzaman et al. 2020 Nat. Commun.
 
-# Usage: python3 parse_hmmsearch.py --in_dir=../outdir/hmm/ --in_file_ext=domout --out_dir=../source_data/example_inputs/ --out_preffix=ex_GVOGs --cogset=../source_data/features/GVHoP_GVOGs_all.tsv --seq_dir=../test_MAGs/ --seq_file_ext=faa
-
 
 import os, sys, subprocess, re, shlex, glob, operator, argparse
 import pandas as pd
@@ -23,9 +21,6 @@ from Bio.SeqRecord import SeqRecord
 
 """ Loop through and parse the checkm HMM output """
 def hmm_parser(folder, suffix, output):
-	record_list = []
-	score_list = {}
-	prot_list = []
 	combined_output = open(output, "w")
 	combined_output.write("protein\tacc\thit\tstart\tend\taln_length\tscore\tcategory\n")
 	hits = []
@@ -40,8 +35,6 @@ def hmm_parser(folder, suffix, output):
 			start_dict = {}
 			end_dict = {}
 			bit_dict = defaultdict(int)
-			hit_type = {}
-			marker_dict = {}
 			position_dict = defaultdict(list)
 			for line in f.readlines():
 				if line.startswith("#"):
@@ -74,7 +67,6 @@ def hmm_parser(folder, suffix, output):
 					#print entry, item, filenames
 					ids_hit = entry +"."+ hit_dict[entry]
 					output_list.append(entry +"\t"+ str(hit_dict[entry]) +"\t"+ str(min(position_dict[ids_hit])) +"\t"+ str(max(position_dict[ids_hit])) +"\t"+ str(bit_dict[entry]) )
-			hit_profile = defaultdict(int)
 			done = []
 			for line in output_list:
 				line1 = line.rstrip()
@@ -296,7 +288,7 @@ def run_program(in_dir, out_dir, out_preffix, prox, in_file_ext, allhits, cogset
 				all_besthits = [p for p in protein2dups.keys() if protein2dups[p] in ["single_besthit", "main_hit"]] 
 				all_scores = [protein2score[getprot(p)] for p in all_besthits]
 				if len(all_scores) > 0:
-					max_index, max_value = max(enumerate(all_scores), key=operator.itemgetter(1))
+					max_index, _ = max(enumerate(all_scores), key=operator.itemgetter(1))
 					best_hit = all_besthits[max_index]
 					other_hits = [j for j in all_besthits if j != best_hit]
 					for o in other_hits:

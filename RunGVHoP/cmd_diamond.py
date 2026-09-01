@@ -3,10 +3,6 @@
 # cmd_diamond.py
 
 # Hsin-Ying Chang <hyhazelchang@gmail.com>
-# v1 2023/06/10
-
-# Usage: python3 /RAID1/working/R220/xinchang/pyscripts/cmd_diamond.py --diamond_dir=../softwares/diamond --task=blastp --in_dir=../test_MAGs/ --out_dir=../outdir/blastp_nr/ --sh_dir=../sh/blast/ --in_file_ext=faa --out_file_ext=txt --db_dir=../db/GVHoP_GVEUKs --outfmt=6 --threshold=1 --opt="-evalue 1e-5" --n_job=1
-
 
 import argparse
 import os
@@ -17,26 +13,24 @@ def main():
         description=("Make the shscript for blast execution."),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--diamond_dir",
-                        default=None,
-                        type=str,
-                        help="DIAMOND file directory. Please provide absolute path.")
     parser.add_argument("--task",
-                        default=None,
+                        default="blastp",
+                        required=True,
                         type=str,
                         help="Specify your task.")
     parser.add_argument("--in_dir",
-                        default=None,
+                        default="../example_MAGs/",
+                        required=True,
                         type=str,
-                        help="Directory containing input files (the file should have fasta extension). Please provide absolute path.")
+                        help="Directory containing input files (the file should have fasta extension).")
     parser.add_argument("--out_dir",
-                        default=None,
+                        default="../output_blastp/",
                         type=str,
-                        help="Output directory. Please provide absolute path.")
+                        help="Output directory.")
     parser.add_argument("--sh_dir",
-                        default=None,
+                        default="../sh/blastp/",
                         type=str,
-                        help="Directory for shell scripts. Please provide absolute path.")
+                        help="Directory for shell scripts.")
     parser.add_argument("--in_file_ext",
                         default="fasta",
                         type=str)
@@ -44,23 +38,23 @@ def main():
                         default="xml",
                         type=str)
     parser.add_argument("--db_dir",
-                        default=None,
+                        default="../GVHoP_database_v1.0/GVHoP_GVEUKs.dmnd",
+                        required=True,
                         type=str)
     parser.add_argument("--outfmt",
-                        default=None,
+                        default="6",
                         type=str)    
     parser.add_argument("--threshold",
-                        default=None,
+                        default="8",
                         type=str)  
     parser.add_argument("--opt",
-                        default=None,
+                        default="--evalue 1e-5",
                         type=str)    
     parser.add_argument("--n_job",
                         default=1,
                         type=int)
 
     args = parser.parse_args()
-    diamond_dir = args.diamond_dir
     task = args.task
     in_dir = args.in_dir
     out_dir = args.out_dir
@@ -74,7 +68,7 @@ def main():
     n_job = args.n_job
 
     # Find the sequence files
-    seqfiles = glob.glob(in_dir + "*." + in_file_ext)
+    in_files = glob.glob(in_dir + "*." + in_file_ext)
 
     # Make output directory
     os.makedirs(out_dir, exist_ok=True)
@@ -82,20 +76,14 @@ def main():
     # Get file names
     count = 0
     diamond_cmd = []
-    for seq in seqfiles:
+    for seq in in_files:
         count += 1
         seq_name = seq.replace(in_dir, "")
         seq_name = seq_name.replace(f".{in_file_ext}", "")
-        diamond_cmd.append(diamond_dir + " " + task + 
-                           " -d " + db_dir + 
-                           " -q " + seq + 
-                           " -o " + out_dir + seq_name + "." + out_file_ext + 
-                           " -f " + outfmt +
-                           " -p " + threshold +
-                           " " + opt)
+        diamond_cmd.append(f"{task} -d {db_dir} -q {seq} -o {out_dir}{seq_name}.{out_file_ext} -f {outfmt} -p {threshold} {opt}")
 
     # print out job scripts
-    os.system("mkdir -p " + sh_dir)
+    os.makedirs(sh_dir, exist_ok=True)
     quo = int(count / n_job)
     mod = int(count % n_job)
     cmd_num = 0
@@ -111,6 +99,9 @@ def main():
                 job.write(diamond_cmd[cmd_num] + "\n")
                 cmd_num += 1
             job.close()
+    print(f"The shell scripts for diamond execution have been generated in {sh_dir}.")
+    print(f"Please check the generated scripts and run the execute_sh.py script to execute diamond.")
+    print(f"Example: python execute_sh.py --sh_dir={sh_dir} --log_dir=../execute/diamond/")
 
 if __name__ == "__main__":
     main()

@@ -1,13 +1,9 @@
 #!/usr/bin/python3
 
-# parse_blasthit_to_content_v2.py
+# parse_blasthits.py
 
 # Hsin-Ying Chang <hyhazelchang@gmail.com>
-# v1 2025/10/21 
-# v2 2025/12/29 to store the bit scores instead of presence/absence only
 
-
-# Usage: python3 parse_blasthit_to_content_v2.py --blast_in=../outdir/blastp_nr/ --in_file_ext=txt --column_names=../source_data/features/GVHoP_GVEUKs_all.tsv --outfile=../source_data/example_inputs/ex_GVEUKs.tsv
 
 import os
 import argparse
@@ -26,18 +22,18 @@ def main():
     )
     parser.add_argument("--blast_in",
                         type=str,
-                        default=None,
+                        default="../output_blastp/",
                         help="The directory of blast results.")
     parser.add_argument("--in_file_ext",
                         default="tsv",
                         type=str)
     parser.add_argument("--column_names",
                         type=str,
-						required=True,
-                        default=None)
+                        default="../source_data/features/GVHoP_GVEUKs_all.tsv",
+						required=True)
     parser.add_argument("--outfile",
                         type=str,
-                        default=None,
+                        default="../source_data/example_inputs/ex_GVEUKs.tsv",
                         help="The directory of output file.")
 
     # Defining variables from input
