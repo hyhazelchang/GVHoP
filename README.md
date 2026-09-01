@@ -78,7 +78,6 @@ Output feature sets for GVHoP:
 python GVHoP.py --GVOGs_in=source_data/example_inputs/ex_GVOGs.tsv --GVEUKs_in=source_data/example_inputs/ex_GVEUKs.tsv --sample_ls=source_data/example_inputs/sample.ls --out_dir=temp_out/host_prediction/
 ```
 
-
 ## Results
 
 

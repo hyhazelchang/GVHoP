@@ -7,7 +7,7 @@
 # from load predictor
 
 # cd /home/xinchang/projects/girush02/girush02.26/DATA/pyscripts/
-# python3 GVHoP.py --GVOGs_in=../source_data/example_inputs/ex_GVOGs.tsv --GVEUKs_in=../source_data/example_inputs/ex_GVEUKs.tsv --sample_ls=../source_data/example_inputs/run1_sample.ls --out_dir=../outdir/
+# python3 GVHoP.py --GVOGs_in=source_data/example_inputs/ex_GVOGs.tsv --GVEUKs_in=source_data/example_inputs/ex_GVEUKs.tsv --sample_ls=source_data/example_inputs/run1_sample.ls --out_dir=outdir/
 
 import os
 import argparse
@@ -189,10 +189,10 @@ def main():
     # Select the samples
     data_df = data_df.reindex(sample_ls, fill_value=0)
     # Select GVHoP all features
-    feature_cols = open("../source_data/features/GVHoP_GVOGs_all.tsv").readline().strip().split('\t')
+    feature_cols = open("source_data/features/GVHoP_GVOGs_all.tsv").readline().strip().split('\t')
     data_df = data_df.reindex(columns=feature_cols, fill_value=0)
     # Select GVHoP top features
-    top_feature_cols = open("../source_data/features/GVHoP_GVOGs_top.tsv").readline().strip().split('\t')
+    top_feature_cols = open("source_data/features/GVHoP_GVOGs_top.tsv").readline().strip().split('\t')
     top_GVOGs_df = data_df.reindex(columns=top_feature_cols, fill_value=0)
     # Create a dataframe for saving probability
     samples = data_df.index.tolist()
@@ -202,17 +202,17 @@ def main():
     for i in range(1, 101):
         ## clf_top ##
         print(f"clf_GVOGs_top_{i}_model")
-        model = joblib.load(f"../XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in top_ls]
         prob_out_top = run_XGBclf(data_df, 8293, model, prob_out, host_ls)
         ## clf_intermediate ##
         print(f"clf_GVOGs_intermediate_{i}_model")
-        model = joblib.load(f"../XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in intermediate_ls]
         prob_out_intermediate = run_XGBclf(data_df, 8293, model, prob_out, host_ls)
         ## clf_bottom ##
         print(f"clf_GVOGs_bottom_{i}_model")
-        model = joblib.load(f"../XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in bottom_ls]
         prob_out_bottom = run_XGBclf(data_df, 8293, model, prob_out, host_ls)
         #
@@ -229,10 +229,10 @@ def main():
     # Select the samples
     data_df = data_df.reindex(sample_ls, fill_value=0)
     # Select GVHoP all features
-    feature_cols = open("../source_data/features/GVHoP_GVEUKs_all.tsv").readline().strip().split('\t')
+    feature_cols = open("source_data/features/GVHoP_GVEUKs_all.tsv").readline().strip().split('\t')
     data_df = data_df.reindex(columns=feature_cols, fill_value=0)
     # Select GVHoP top features
-    top_feature_cols = open("../source_data/features/GVHoP_GVEUKs_top.tsv").readline().strip().split('\t')
+    top_feature_cols = open("source_data/features/GVHoP_GVEUKs_top.tsv").readline().strip().split('\t')
     top_GVEUKs_df = data_df.reindex(columns=top_feature_cols, fill_value=0)
     # Create a dataframe for saving probability
     samples = data_df.index.tolist()
@@ -242,17 +242,17 @@ def main():
     for i in range(1, 101):
         ## clf_top ##
         print(f"clf_GVEUKs_top_{i}_model")
-        model = joblib.load(f"../XGBclf/clf_GVEUKs/top/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVEUKs/top/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in top_ls]
         prob_out_top = run_XGBclf(data_df, 57250, model, prob_out, host_ls)
         ## clf_intermediate ##
         print(f"clf_GVEUKs_intermediate_{i}_model")
-        model = joblib.load(f"../XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in intermediate_ls]
         prob_out_intermediate = run_XGBclf(data_df, 57250, model, prob_out, host_ls)
         ## clf_bottom ##
         print(f"clf_GVEUKs_bottom_{i}_model")
-        model = joblib.load(f"../XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in bottom_ls]
         prob_out_bottom = run_XGBclf(data_df, 57250, model, prob_out, host_ls)
         #
@@ -281,7 +281,7 @@ def main():
     X_test = meta_df[FEATURES]
     #
     # 1. Load the preprocessor back into memory
-    loaded_preprocessor = joblib.load("../NNclf/preprocessor_all.joblib")
+    loaded_preprocessor = joblib.load("NNclf/preprocessor_all.joblib")
     #
     # 2. Transform new data (CRITICAL: Use .transform(), NOT .fit_transform())
     X_test_scaled = loaded_preprocessor.transform(X_test)
@@ -296,7 +296,7 @@ def main():
     test_loader = DataLoader(test_dataset, batch_sampler=safe_sampler, num_workers=2, pin_memory=True)
     #
     # 5. initiate same model architecture
-    model_path = "../NNclf/nn_all.pt"
+    model_path = "NNclf/nn_all.pt"
     model = MetaNN(n_classes=n_classes_global)
     model.to(device)
     model.load_state_dict(torch.load(model_path, weights_only=True))
