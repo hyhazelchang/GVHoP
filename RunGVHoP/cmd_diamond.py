@@ -80,7 +80,7 @@ def main():
         count += 1
         seq_name = seq.replace(in_dir, "")
         seq_name = seq_name.replace(f".{in_file_ext}", "")
-        diamond_cmd.append(f"{task} -d {db_dir} -q {seq} -o {out_dir}{seq_name}.{out_file_ext} -f {outfmt} -p {threshold} {opt}")
+        diamond_cmd.append(f"diamond {task} -d {db_dir} -q {seq} -o {out_dir}{seq_name}.{out_file_ext} -f {outfmt} -p {threshold} {opt}")
 
     # print out job scripts
     os.makedirs(sh_dir, exist_ok=True)
