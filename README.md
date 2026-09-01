@@ -67,6 +67,12 @@ python RunGVHoP/execute_sh.py --sh_dir=../sh/blastp/ --log_dir=../execute/blastp
 python RunGVHoP/parse_blasthits.py --blast_in=../output_blastp/ --in_file_ext=txt --column_names=../source_data/features/GVHoP_GVEUKs_all.tsv --outfile=../source_data/example_inputs/ex_GVEUKs.tsv
 ```
 
+Output feature sets for GVHoP:
+
+1. ../source_data/example_inputs/ex_GVOGs.tsv
+
+2. ../source_data/example_inputs/ex_GVEUKs.tsv
+
 
 ## Results
 
