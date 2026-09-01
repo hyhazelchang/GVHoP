@@ -32,15 +32,17 @@ Activate GVHoP environment:
 conda activate gvhop
 ```
 
-Construct feature sets from sequence data:
+Construct feature sets (Gene content) from sequence data:
+This will generate the shell scripts for hmmsearch execution in sh_dir
 
 ```{bash}
-# Gene content
-## This will generate the shell scripts for hmmsearch execution in sh_dir
 python RunGVHoP/cmd_hmm.py --in_dir=../example_MAGs/ --db_dir=../GVHoP_database_v1.0/GVHoP_GVOGs.hmm --out_dir=../output_hmm/ --sh_dir=../sh/hmmsearch/ --in_file_ext=faa --out_file_ext=domout --opt='hmmsearch --cpu 10 -E 1e-5 --domtblout' --n_job=4
+```
 
-## Execute hmmsearch
+Execute hmmsearch
+```{bash}
 python RunGVHoP/execute_sh.py --sh_dir=../sh/hmmsearch/ --log_dir=../execute/hmmsearch/
+```
 
 ## Parse feature matrix
 python RunGVHoP/parse_hmmsearch.py --in_dir=../output_hmm/ --in_file_ext=domout --out_dir=../source_data/example_inputs/ --out_preffix=ex_GVOGs --cogset=../source_data/features/GVHoP_GVOGs_all.tsv --seq_dir=../example_MAGs/ --seq_file_ext=faa
