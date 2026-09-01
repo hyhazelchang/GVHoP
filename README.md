@@ -25,7 +25,7 @@ wget '10.5281/zenodo.22199562' -O GVHoP_database_v1.0.zip
 unzip GVHoP_database_v1.0.zip
 ```
 
-## Example run
+### Example run
 #### 0. Activate GVHoP environment:
 
 ```{bash}
