@@ -26,13 +26,13 @@ unzip GVHoP_database_v1.0.zip
 ```
 
 ## Example run
-Activate GVHoP environment:
+### Activate GVHoP environment:
 
 ```{bash}
 conda activate gvhop
 ```
 
-1. Construct feature sets (Gene content) from sequence data:
+### 1. Construct feature sets (Gene content) from sequence data:
 
 📝 1-1. This will generate the shell scripts for hmmsearch execution in sh_dir
 ```{bash}
@@ -49,7 +49,7 @@ python RunGVHoP/execute_sh.py --sh_dir=../sh/hmmsearch/ --log_dir=../execute/hmm
 python RunGVHoP/parse_hmmsearch.py --in_dir=../output_hmm/ --in_file_ext=domout --out_dir=../source_data/example_inputs/ --out_preffix=ex_GVOGs --cogset=../source_data/features/GVHoP_GVOGs_all.tsv --seq_dir=../example_MAGs/ --seq_file_ext=faa
 ```
 
-2. Construct feature sets (GV-euk signals) from sequence data:
+### 2. Construct feature sets (GV-euk signals) from sequence data:
 
 📝 2-1. This will generate the shell scripts for DIAMOND blastp execution in sh_dir
 ```{bash}
