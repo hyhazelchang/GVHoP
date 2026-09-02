@@ -1,6 +1,9 @@
 # GVHoP: Giant Virus Host Predictor
 
-🖥️ GVHoP is a command-line tool for predicting eukaryotic host to giant virus metagenome-assembled genomes (GVMAGs) using gene content and giant virus-eukaryotes gene similarities
+🖥️ GVHoP is a command-line tool for predicting eukaryotic host to giant virus metagenome-assembled genomes (GVMAGs).
+
+GVHoP predicts hosts for GVMAGs by combining two complementary sources of genomic information. First, predicted viral proteins are screened against curated HMMs representing protein families. In parallel, viral proteins are compared with a eukaryotic protein database to identify potential virus–host gene similarities. These gene-content and gene-similarity signals are then integrated to infer the most likely eukaryotic hosts of the input GVMAGs.
+
 
 ## How to use
 
@@ -15,7 +18,7 @@ git clone https://github.com/hyhazelchang/GVHoP.git
 Create `conda` environment and install requirements:
 
 ```{bash}
-conda env create -c conda-forge -c bioconda --name gvhop --file env.yml
+conda env create -f env.yml
 ```
 
 Download the databases from ZENODO before running GVHoP:
