@@ -47,7 +47,7 @@ python ExtractFeatureSets/execute_sh.py --sh_dir=temp_out/sh/hmmsearch/ --log_di
 
 💻 Parse feature matrix
 ```{bash}
-python ExtractFeatureSets/parse_hmmsearch.py --in_dir=temp_out/output_hmm/ --in_file_ext=domout --out_dir=source_data/example_inputs/ --out_preffix=ex_GVOGs --cogset=source_data/features/GVHoP_GVOGs_all.tsv --seq_dir=example_MAGs/ --seq_file_ext=faa
+python ExtractFeatureSets/build_FeatureSet.py --in_dir=temp_out/output_hmm/ --in_file_ext=domout --outfile=source_data/example_inputs/ex_GVOGs.tsv --column_names=source_data/features/GVHoP_GVOGs_all.tsv --opt=hmmerhits
 ```
 
 #### Construct feature set (GV-euk signals) from sequence data:
@@ -64,7 +64,7 @@ python ExtractFeatureSets/execute_sh.py --sh_dir=temp_out/sh/blastp/ --log_dir=t
 
 💻 Parse feature matrix
 ```{bash}
-python ExtractFeatureSets/parse_blasthits.py --blast_in=temp_out/output_blastp/ --in_file_ext=txt --column_names=source_data/features/GVHoP_GVEUKs_all.tsv --outfile=source_data/example_inputs/ex_GVEUKs.tsv
+python ExtractFeatureSets/build_FeatureSet.py --in_dir=temp_out/output_blastp/ --in_file_ext=tsv --outfile=source_data/example_inputs/ex_GVEUKs.tsv --column_names=source_data/features/GVHoP_GVEUKs_all.tsv --opt=hmmerhits
 ```
 
 Output feature sets for GVHoP:
