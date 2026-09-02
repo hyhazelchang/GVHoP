@@ -35,7 +35,7 @@ Email: hyhazelchang@gmail.com
 
 Usage:
 chmod u+x GVHoP.py
-python GVHoP.py --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=8
+./GVHoP.py --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=8
 
 # Before running the GVHoP.py, please make sure to download the database, pre-trained models and check directory in GVHoP.py.
 """
