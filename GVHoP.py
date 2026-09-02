@@ -1,11 +1,14 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-import os
-import argparse
+
+
+import os, re, shlex, operator, argparse, glob
 import numpy as np
 import pandas as pd
 from functools import reduce
 from collections import defaultdict
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
 import joblib
 import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
@@ -31,11 +34,135 @@ Author: Hsin-Ying Chang
 Email: hyhazelchang@gmail.com
 
 Usage:
-GVHoP.py --GVOGs_in=source_data/example_inputs/ex_GVOGs.tsv --GVEUKs_in=source_data/example_inputs/ex_GVEUKs.tsv --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop/
+chmod u+x GVHoP.py
+python GVHoP.py --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=8
 
-# Before running the GVHoP.py, please make sure to download the pre-trained models and check directory in GVHoP.py.
+# Before running the GVHoP.py, please make sure to download the database, pre-trained models and check directory in GVHoP.py.
 """
 
+def cmd_hmmer(in_dir, in_file_ext, out_dir, db_dir, cpu):
+    in_files = glob.glob(in_dir + "*." + in_file_ext)
+    count = 0
+    hmm_cmd = []
+    os.makedirs(f"{out_dir}hmmsearch/", exist_ok=True)
+    for file in in_files:
+        count += 1
+        file_name = file.replace(in_dir, "")
+        file_name = file_name.replace(f".{in_file_ext}", "")
+        hmm_cmd.append(f"hmmsearch --cpu {cpu} -E 1e-5 --domtblout {out_dir}hmmsearch/{file_name}.domout {db_dir}/GVHoP_GVOGs.hmm {file}")
+    return hmm_cmd
+
+def cmd_diamond(in_dir, in_file_ext, out_dir, db_dir, cpu):
+    in_files = glob.glob(in_dir + "*." + in_file_ext)
+    count = 0
+    diamond_cmd = []
+    os.makedirs(f"{out_dir}diamond_blastp/", exist_ok=True)
+    for file in in_files:
+        count += 1
+        file_name = file.replace(in_dir, "")
+        file_name = file_name.replace(f".{in_file_ext}", "")
+        diamond_cmd.append(f"diamond blastp -d {db_dir}/GVHoP_GVEUKs.dmnd -q {file} -o {out_dir}diamond_blastp/{file_name}.txt -f 6 -p {cpu} --evalue 1e-5")
+    return diamond_cmd
+
+def execute_cmd(cmd, job_name):
+    os.makedirs("execute/", exist_ok=True)
+    log_file = f"execute/{job_name}.log"
+    cmd_list = shlex.split(cmd)
+    print(f"Running: {cmd}\n")
+    subprocess.run(cmd_list, stdout=open(log_file, "w"), stderr=subprocess.STDOUT, check=True)
+
+def run_jobs(cmd, job_name):
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        executor.map(lambda c: execute_cmd(c, job_name), cmd)
+
+def hmmparser(hmmer_in):
+	hits = []
+	bit_dict = {}
+	content_dict = defaultdict(dict)
+	for filenames in os.listdir(hmmer_in):
+		if filenames.endswith("domout"):
+			acc = re.sub('.' + "domout", "", filenames)
+			f = open(hmmer_in + "/" + filenames, 'r')
+			o = open(hmmer_in + "/" + filenames + ".parsed", 'w')
+			o.write("protein_id\taccession\tbest_hit\taln_start\taln_end\tscore\ttype\n")
+			hit_dict = {}
+			start_dict = {}
+			end_dict = {}
+			bit_dict = defaultdict(int)
+			position_dict = defaultdict(list)
+			for line in f.readlines():
+				if line.startswith("#"):
+					pass
+				else:
+					newline = re.sub(r'\s+', '\t', line)
+					list1 = newline.split('\t')
+					ids = list1[0]
+					hit = re.sub("_", "", list1[3])
+					#print(hit)
+					score = float(list1[7])
+					domain_evalue = float(list1[11])
+					if score > bit_dict[ids] and domain_evalue < 1e-3:
+						ids_hit = ids +"."+ hit
+						start = int(list1[15])
+						end   = int(list1[16])
+						position_dict[ids_hit].append(start)
+						position_dict[ids_hit].append(end)
+						#print(ids_hit, score, domain_evalue, start, end)
+						hit_dict[ids] = hit
+						start_dict[ids] = start
+						end_dict[ids] = end
+						bit_dict[ids] = score
+			bit_sorted = sorted(bit_dict.items(), key=operator.itemgetter(1), reverse=True)
+			output_list = []
+			for item in bit_sorted:
+				entry = item[0]
+				score = item[1]
+				if score > 0:
+					#print entry, item, filenames
+					ids_hit = entry + "." + hit_dict[entry]
+					output_list.append(entry +"\t"+ str(hit_dict[entry]) +"\t"+ str(min(position_dict[ids_hit])) +"\t"+ str(max(position_dict[ids_hit])) +"\t"+ str(bit_dict[entry]) )
+			done = []
+			for line in output_list:
+				line1 = line.rstrip()
+				tabs = line1.split("\t")
+				ids = tabs[0]
+				hits.append(ids)
+				cog = tabs[1]
+				start = tabs[2]
+				end = tabs[3]
+				aln_length = str(abs(float(end) - float(start)))
+				score = tabs[4]
+				nr = acc + "_" + cog
+				if nr in done:
+					content_dict[acc][cog] += 1
+					o.write(ids +"\t"+ acc +"\t"+ cog +"\t"+ start +"\t"+ end +"\t"+ aln_length +"\t"+ score +"\tNH\n")
+				else:
+					content_dict[acc][cog] = 1
+					o.write(ids +"\t"+ acc +"\t"+ cog +"\t"+ start +"\t"+ end +"\t"+ aln_length +"\t"+ score +"\tBH\n")
+					done.append(nr)
+			o.close()
+	return content_dict
+
+def blastparser(blast_in):
+	# Read data from input files
+    blastfiles = [filename for filename in os.listdir(blast_in) if filename.endswith("txt")]
+    # Check presence/absence of hits
+    score_dict = defaultdict(dict)
+    for file in blastfiles:
+        filename = os.path.basename(file).replace('.'+ "txt", '')
+        try:
+            result = pd.read_csv(os.path.join(blast_in, file), sep='\t')
+        except pd.errors.EmptyDataError:
+            result = pd.DataFrame()
+        if not result.empty:
+            hits = result.iloc[:, 1].to_list()
+            for i in range(len(hits)):
+                if filename in score_dict[hits[i]].keys():
+                    if result.iloc[i, 11] > score_dict[hits[i]][filename]:
+                        score_dict[hits[i]][filename] = result.iloc[i, 11]
+                else:
+                    score_dict[hits[i]][filename] = result.iloc[i, 11]
+    return score_dict
 
 def run_XGBclf(data_df, scaler_col, model, prob_out, hosts):
     # Load new data (unlabeled)
@@ -46,13 +173,11 @@ def run_XGBclf(data_df, scaler_col, model, prob_out, hosts):
         X_block_scaled = scaler.transform(X_block)
         X_test_final.append(X_block_scaled)
     X_test_scaled = np.concatenate(X_test_final, axis=1)
-    X_test_selected = model.named_steps['feature_selector'].transform(X_test_scaled)    
-    
+    X_test_selected = model.named_steps['feature_selector'].transform(X_test_scaled)   
     # Predict
     # y_pred = model.named_steps['classifier'].predict(X_test_selected)
     # y_predpr = model.named_steps['classifier'].predict_proba(X_test_selected)
     y_scores = model.named_steps['classifier'].predict(X_test_selected, output_margin=True)
-
     # Output the prediction results
     # prob_out['pred_label'] = y_pred
     prob_out_new = pd.concat([prob_out.reset_index(drop=True), 
@@ -155,57 +280,94 @@ def main():
             description=("Giant Virus-Host Predictor"),
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--GVOGs_in",
+    parser.add_argument("--in_dir",
                         type=str,
-                        default=None,
-                        help="The directory of input GVOGs files.")
-    parser.add_argument("--GVEUKs_in",
-                        type=str,
-                        default=None,
-                        help="The directory of input GVEUKs files.")
+                        default="../example_MAGs/",
+                        help="The directory of input files.")
+    parser.add_argument("--in_file_ext",
+                        required=True,
+                        default="faa",
+                        type=str)
     parser.add_argument("--sample_ls",
                         type=str,
 						required=True,
-                        default=None)
+                        default="./source_data/example_inputs/sample.ls",
+                        help="The list of samples to be predicted.")
+    parser.add_argument("--db_dir",
+                        default="GVHoP_database_v1.0/",
+                        required=True,
+                        type=str,
+                        help="Directory containing database files.")
     parser.add_argument("--out_dir",
                         type=str,
 						required=True,
                         default='./outdir/',
-                        help="The directory of output files.") 
-       
+                        help="The directory for output files.") 
+    parser.add_argument("--cpu",
+                        type=str,
+						required=True,
+                        default='8',
+                        help="The number of CPU cores to use.") 
+    
     # Defining variables from input
     args = parser.parse_args()
-    GVOGs_in = args.GVOGs_in
-    GVEUKs_in = args.GVEUKs_in
+    in_dir = args.in_dir
+    in_file_ext = args.in_file_ext
     sample_ls = [line.strip() for line in open(args.sample_ls, "r")]
+    db_dir = args.db_dir
     out_dir = args.out_dir
+    cpu = args.cpu
 
-    # Create output directory
-    os.makedirs(out_dir, exist_ok=True)
-
-    # Host lists
+    """ Prepare host lists """    
     top_ls = ['Algae', 'Amoeba', 'Fungi', 'Heteroflagellate', 'Metazoa']
     intermediate_ls = ['Amoeboid', 'Amoebozoa', 'Blastocladiomycota', 'Brownalgae', 'Chlorophyta', 'Chytridiomycota', 'Haptophyta', 'Invertebrate', 'Nonamoeboid', 'Otheralgae', 'Vertebrate']
     bottom_ls = ['Aves', 'Bathycoccaceae', 'Blastocladiomycetes', 'Chlorellaceae', 'Choanocafe', 'Chytridiomycetes', 'Coccolithophyceae', 'Discoba', 'Discosea', 'Insecta', 'Malacostraca', 'Mamiellaceae', 'Mammalia', 'Otherchlorophyta', 'Otherhaptophyta', 'Otherinvertebrate', 'Othervertebrate', 'Phaeophyceae', 'Prymnesiaceae', 'Stramenopile', 'Tubulinea']
+
+    """ Create output directory """
+    os.makedirs(out_dir, exist_ok=True)
+
+    """ Run Diamond and HMMER """
+    print("Running Diamond and HMMER...")
+    hmmer_cmd = cmd_hmmer(in_dir, in_file_ext, out_dir, db_dir, cpu)
+    diamond_cmd = cmd_diamond(in_dir, in_file_ext, out_dir, db_dir, cpu)
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        executor.submit(run_jobs(diamond_cmd, "diamond_blastp"))
+        executor.submit(run_jobs(hmmer_cmd, "hmmer"))
+    print("Finished running Diamond and HMMER!")
+
+    """ Parse results """
+    print("Parsing results...")
+    hmm_dict = hmmparser(f"{out_dir}hmmsearch/")
+    blast_dict = blastparser(f"{out_dir}diamond_blastp/")
+
+    # Combine all rows into a DataFrame
+    hmm_df = pd.DataFrame(hmm_dict)
+    blast_df = pd.DataFrame(blast_dict)
+    hmm_df = hmm_df.fillna(0).astype(int)
+    blast_df = blast_df.fillna(0).astype(int)
+    hmm_df.columns = hmm_df.columns.astype(str)
+    blast_df.columns = blast_df.columns.astype(str)
+    hmm_df.index.name = 'testset'
+    blast_df.index.name = 'testset'
+    with open("source_data/features/GVHoP_GVOGs_all.tsv", 'r') as f:
+        wanted_columns = f.readline().strip().split('\t')
+    hmm_df = hmm_df.reindex(columns=wanted_columns, fill_value=0)
+    with open("source_data/features/GVHoP_GVEUKs_all.tsv", 'r') as f:
+        wanted_columns = f.readline().strip().split('\t')
+    blast_df = blast_df.reindex(columns=wanted_columns, fill_value=0)
+
 
     # Create the dictionary for saving the raw scores
     prob_out_dict = defaultdict(list)
 
     """ clf_GVOGs """
-    # Parse data from input file
-    data_df = pd.read_csv(GVOGs_in, index_col=0, header=0, sep='\t')
-    data_df.index.name = "testset"
     # Select the samples
-    data_df = data_df.reindex(sample_ls, fill_value=0)
-    # Select GVHoP all features
-    feature_cols = open("source_data/features/GVHoP_GVOGs_all.tsv").readline().strip().split('\t')
-    data_df = data_df.reindex(columns=feature_cols, fill_value=0)
+    hmm_df = hmm_df.reindex(sample_ls, fill_value=0)
     # Select GVHoP top features
     top_feature_cols = open("source_data/features/GVHoP_GVOGs_top.tsv").readline().strip().split('\t')
-    top_GVOGs_df = data_df.reindex(columns=top_feature_cols, fill_value=0)
+    top_GVOGs_df = hmm_df.reindex(columns=top_feature_cols, fill_value=0)
     # Create a dataframe for saving probability
-    samples = data_df.index.tolist()
-    prob_out = pd.DataFrame({'testset': samples})
+    prob_out = pd.DataFrame({'testset': sample_ls})
     # Load model
     print("Initialize clf_GVOGs...")
     for i in range(1, 101):
@@ -213,17 +375,17 @@ def main():
         print(f"clf_GVOGs_top_{i}_model")
         model = joblib.load(f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in top_ls]
-        prob_out_top = run_XGBclf(data_df, 8293, model, prob_out, host_ls)
+        prob_out_top = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         ## clf_intermediate ##
         print(f"clf_GVOGs_intermediate_{i}_model")
         model = joblib.load(f"XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in intermediate_ls]
-        prob_out_intermediate = run_XGBclf(data_df, 8293, model, prob_out, host_ls)
+        prob_out_intermediate = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         ## clf_bottom ##
         print(f"clf_GVOGs_bottom_{i}_model")
         model = joblib.load(f"XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in bottom_ls]
-        prob_out_bottom = run_XGBclf(data_df, 8293, model, prob_out, host_ls)
+        prob_out_bottom = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         #
         prob_out_dfs = [prob_out_top, prob_out_intermediate, prob_out_bottom]
         # merge the dataframes on the testset
@@ -232,20 +394,13 @@ def main():
     print("Finish clf_GVOGs!")
 
     """ clf_GVEUKs """
-    # Parse data from input file
-    data_df = pd.read_csv(GVEUKs_in, index_col=0, header=0, sep='\t')
-    data_df.index.name = "testset"
     # Select the samples
-    data_df = data_df.reindex(sample_ls, fill_value=0)
-    # Select GVHoP all features
-    feature_cols = open("source_data/features/GVHoP_GVEUKs_all.tsv").readline().strip().split('\t')
-    data_df = data_df.reindex(columns=feature_cols, fill_value=0)
+    blast_df = blast_df.reindex(sample_ls, fill_value=0)
     # Select GVHoP top features
     top_feature_cols = open("source_data/features/GVHoP_GVEUKs_top.tsv").readline().strip().split('\t')
-    top_GVEUKs_df = data_df.reindex(columns=top_feature_cols, fill_value=0)
+    top_GVEUKs_df = blast_df.reindex(columns=top_feature_cols, fill_value=0)
     # Create a dataframe for saving probability
-    samples = data_df.index.tolist()
-    prob_out = pd.DataFrame({'testset': samples})
+    prob_out = pd.DataFrame({'testset': sample_ls})
     # Load model
     print("Initialize clf_GVEUKs...")
     for i in range(1, 101):
@@ -253,17 +408,17 @@ def main():
         print(f"clf_GVEUKs_top_{i}_model")
         model = joblib.load(f"XGBclf/clf_GVEUKs/top/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in top_ls]
-        prob_out_top = run_XGBclf(data_df, 57250, model, prob_out, host_ls)
+        prob_out_top = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         ## clf_intermediate ##
         print(f"clf_GVEUKs_intermediate_{i}_model")
         model = joblib.load(f"XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in intermediate_ls]
-        prob_out_intermediate = run_XGBclf(data_df, 57250, model, prob_out, host_ls)
+        prob_out_intermediate = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         ## clf_bottom ##
         print(f"clf_GVEUKs_bottom_{i}_model")
         model = joblib.load(f"XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in bottom_ls]
-        prob_out_bottom = run_XGBclf(data_df, 57250, model, prob_out, host_ls)
+        prob_out_bottom = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         #
         prob_out_dfs = [prob_out_top, prob_out_intermediate, prob_out_bottom]
         # merge the dataframes on the testset
