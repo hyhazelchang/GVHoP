@@ -1,13 +1,4 @@
-#!/usr/bin/python3
-
-# GVHoP.py
-
-# Hsin-Ying Chang <hyhazelchang@gmail.com>
-# v1 2026/08/28
-# from load predictor
-
-# cd /home/xinchang/projects/girush02/girush02.26/DATA/pyscripts/
-# python3 GVHoP.py --GVOGs_in=source_data/example_inputs/ex_GVOGs.tsv --GVEUKs_in=source_data/example_inputs/ex_GVEUKs.tsv --sample_ls=source_data/example_inputs/run1_sample.ls --out_dir=outdir/
+#!/usr/bin/env python
 
 import os
 import argparse
@@ -27,6 +18,24 @@ from torch.utils.data import Sampler, RandomSampler, SequentialSampler
 from GVHoP_NN import MetaDataset
 from GVHoP_NN import MetaNN
 from GVHoP_NN import SafeBatchSampler
+
+
+"""
+########################################
+## Giant Virus-Host Predictor (GVHoP) ##
+########################################
+GVHoP.py
+v1 2026
+
+Author: Hsin-Ying Chang
+Email: hyhazelchang@gmail.com
+
+Usage:
+GVHoP.py --GVOGs_in=source_data/example_inputs/ex_GVOGs.tsv --GVEUKs_in=source_data/example_inputs/ex_GVEUKs.tsv --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop/
+
+# Before running the GVHoP.py, please make sure to download the pre-trained models and check directory in GVHoP.py.
+"""
+
 
 def run_XGBclf(data_df, scaler_col, model, prob_out, hosts):
     # Load new data (unlabeled)

@@ -37,34 +37,34 @@ conda activate gvhop
 
 📝 This will generate the shell scripts for hmmsearch execution in sh_dir
 ```{bash}
-python ExtractFeatureSets/cmd_hmm.py --in_dir=example_MAGs/ --db_dir=GVHoP_database_v1.0/GVHoP_GVOGs.hmm --out_dir=temp_out/output_hmm/ --sh_dir=temp_out/sh/hmmsearch/ --in_file_ext=faa --out_file_ext=domout --opt='hmmsearch --cpu 10 -E 1e-5 --domtblout' --n_job=4
+ExtractFeatureSets/cmd_hmm.py --in_dir=example_MAGs/ --db_dir=GVHoP_database_v1.0/GVHoP_GVOGs.hmm --out_dir=temp_out/output_hmm/ --sh_dir=temp_out/sh/hmmsearch/ --in_file_ext=faa --out_file_ext=domout --opt='hmmsearch --cpu 10 -E 1e-5 --domtblout' --n_job=4
 ```
 
 🏃 Execute hmmsearch
 ```{bash}
-python ExtractFeatureSets/execute_sh.py --sh_dir=temp_out/sh/hmmsearch/ --log_dir=temp_out/execute/hmmsearch/
+ExtractFeatureSets/execute_sh.py --sh_dir=temp_out/sh/hmmsearch/ --log_dir=temp_out/execute/hmmsearch/
 ```
 
 💻 Parse feature matrix
 ```{bash}
-python ExtractFeatureSets/build_FeatureSet.py --in_dir=temp_out/output_hmm/ --in_file_ext=domout --outfile=source_data/example_inputs/ex_GVOGs.tsv --column_names=source_data/features/GVHoP_GVOGs_all.tsv --opt=hmmerhits
+ExtractFeatureSets/build_FeatureSet.py --in_dir=temp_out/output_hmm/ --in_file_ext=domout --outfile=source_data/example_inputs/ex_GVOGs.tsv --column_names=source_data/features/GVHoP_GVOGs_all.tsv --opt=hmmerhits
 ```
 
 #### Construct feature set (GV-euk signals) from sequence data:
 
 📝 This will generate the shell scripts for DIAMOND blastp execution in sh_dir
 ```{bash}
-python3 ExtractFeatureSets/cmd_diamond.py --task=blastp --in_dir=example_MAGs/ --out_dir=temp_out/output_blastp/ --sh_dir=temp_out/sh/blastp/ --in_file_ext=faa --out_file_ext=txt --db_dir=GVHoP_database_v1.0/GVHoP_GVEUKs.dmnd --outfmt=6 --threshold=8 --opt="--evalue 1e-5" --n_job=8
+ExtractFeatureSets/cmd_diamond.py --task=blastp --in_dir=example_MAGs/ --out_dir=temp_out/output_blastp/ --sh_dir=temp_out/sh/blastp/ --in_file_ext=faa --out_file_ext=txt --db_dir=GVHoP_database_v1.0/GVHoP_GVEUKs.dmnd --outfmt=6 --threshold=8 --opt="--evalue 1e-5" --n_job=8
 ```
 
 🏃 Execute diamond blastp
 ```{bash}
-python ExtractFeatureSets/execute_sh.py --sh_dir=temp_out/sh/blastp/ --log_dir=temp_out/execute/blastp/
+ExtractFeatureSets/execute_sh.py --sh_dir=temp_out/sh/blastp/ --log_dir=temp_out/execute/blastp/
 ```
 
 💻 Parse feature matrix
 ```{bash}
-python ExtractFeatureSets/build_FeatureSet.py --in_dir=temp_out/output_blastp/ --in_file_ext=tsv --outfile=source_data/example_inputs/ex_GVEUKs.tsv --column_names=source_data/features/GVHoP_GVEUKs_all.tsv --opt=hmmerhits
+ExtractFeatureSets/build_FeatureSet.py --in_dir=temp_out/output_blastp/ --in_file_ext=tsv --outfile=source_data/example_inputs/ex_GVEUKs.tsv --column_names=source_data/features/GVHoP_GVEUKs_all.tsv --opt=blasthits
 ```
 
 Output feature sets for GVHoP:
@@ -75,7 +75,7 @@ Output feature sets for GVHoP:
 
 #### Run GV-host predictor:
 ```{bash}
-python GVHoP.py --GVOGs_in=source_data/example_inputs/ex_GVOGs.tsv --GVEUKs_in=source_data/example_inputs/ex_GVEUKs.tsv --sample_ls=source_data/example_inputs/sample.ls --out_dir=temp_out/host_prediction/
+GVHoP.py --GVOGs_in=source_data/example_inputs/ex_GVOGs.tsv --GVEUKs_in=source_data/example_inputs/ex_GVEUKs.tsv --sample_ls=source_data/example_inputs/sample.ls --out_dir=temp_out/host_prediction/
 ```
 
 #### Results

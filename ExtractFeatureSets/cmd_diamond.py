@@ -1,12 +1,27 @@
-#!/usr/bin/python3
-
-# cmd_diamond.py
-
-# Hsin-Ying Chang <hyhazelchang@gmail.com>
+#!/usr/bin/env python
 
 import argparse
 import os
 import glob
+
+
+"""
+########################################
+## Giant Virus-Host Predictor (GVHoP) ##
+########################################
+cmd_diamond.py
+v1 2026
+
+Author: Hsin-Ying Chang
+Email: hyhazelchang@gmail.com
+
+Usage:
+# for execute diamond
+ExtractFeatureSets/cmd_diamond.py --task=blastp --in_dir=example_MAGs/ --out_dir=temp_out/output_blastp/ --sh_dir=temp_out/sh/blastp/ --in_file_ext=faa --out_file_ext=txt --db_dir=GVHoP_database_v1.0/GVHoP_GVEUKs.dmnd --outfmt=6 --threshold=8 --opt="--evalue 1e-5" --n_job=8
+
+# This script is used to generate shell scripts for executing diamond searches. It takes input files, constructs the appropriate diamond commands, and writes them to shell scripts for parallel execution.
+"""
+
 
 def main():
     parser = argparse.ArgumentParser(

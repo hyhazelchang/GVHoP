@@ -1,14 +1,30 @@
-#!/usr/bin/python3
-
-# build_FeatureSet.py
-
-# Hsin-Ying Chang <hyhazelchang@gmail.com>
-
+#!/usr/bin/env python
 
 import os, re, operator, argparse
 import pandas as pd
 import numpy as np
 from collections import defaultdict
+
+
+"""
+########################################
+## Giant Virus-Host Predictor (GVHoP) ##
+########################################
+build_FeatureSet.py
+v1 2026
+
+Author: Hsin-Ying Chang
+Email: hyhazelchang@gmail.com
+
+Usage:
+# for hmmer results
+ExtractFeatureSets/build_FeatureSet.py --in_dir=temp_out/output_hmm/ --in_file_ext=domout --outfile=source_data/example_inputs/ex_GVOGs.tsv --column_names=source_data/features/GVHoP_GVOGs_all.tsv --opt=hmmerhits
+# for blast results
+ExtractFeatureSets/build_FeatureSet.py --in_dir=temp_out/output_blastp/ --in_file_ext=tsv --outfile=source_data/example_inputs/ex_GVEUKs.tsv --column_names=source_data/features/GVHoP_GVEUKs_all.tsv --opt=blasthits
+
+# This script is used to build feature sets from raw results of BLAST or HMMER searches. It parses the input files, checks for the presence/absence of hits, and generates a feature set in a tab-separated format.
+"""
+
 
 def blastparser(in_dir, in_file_ext):
 	# Read data from input files

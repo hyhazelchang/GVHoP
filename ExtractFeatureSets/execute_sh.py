@@ -1,14 +1,29 @@
-#!/usr/bin/python3
-
-# execute_sh.py
-
-# Hsin-Ying Chang <hyhazelchang@gmail.com>
+#!/usr/bin/env python
 
 import argparse
 import os
 import glob
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+
+
+"""
+########################################
+## Giant Virus-Host Predictor (GVHoP) ##
+########################################
+execute_sh.py
+v1 2026
+
+Author: Hsin-Ying Chang
+Email: hyhazelchang@gmail.com
+
+Usage:
+# for execute shell scripts
+ExtractFeatureSets/execute_sh.py --sh_dir=temp_out/sh/blastp/ --log_dir=../logs/
+
+# This script is used to execute shell scripts generateds. It takes a directory of shell scripts and executes them in parallel, logging the output to specified log files.
+"""
+
 
 def run_script(sh, log_dir):
     os.chmod(sh, 0o755)

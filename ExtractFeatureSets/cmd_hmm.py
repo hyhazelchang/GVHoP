@@ -1,12 +1,27 @@
 #!/usr/bin/python3
 
-# cmd_hmm.py
-
-# Hsin-Ying Chang <hyhazelchang@gmail.com>
-
 import argparse
 import os
 import glob
+
+
+"""
+########################################
+## Giant Virus-Host Predictor (GVHoP) ##
+########################################
+cmd_hmm.py
+v1 2026
+
+Author: Hsin-Ying Chang
+Email: hyhazelchang@gmail.com
+
+Usage:
+# for execute hmmsearch
+ExtractFeatureSets/cmd_hmm.py --in_dir=example_MAGs/ --db_dir=GVHoP_database_v1.0/GVHoP_GVOGs.hmm --out_dir=temp_out/output_hmm/ --sh_dir=temp_out/sh/hmmsearch/ --in_file_ext=faa --out_file_ext=domout --opt="hmmsearch --cpu 10 -E 1e-5 --domtblout" --n_job=8
+
+# This script is used to generate shell scripts for executing hmmsearch. It takes input files, constructs the appropriate hmmsearch commands, and writes them to shell scripts for parallel execution.
+"""
+
 
 def main():
     parser = argparse.ArgumentParser(
