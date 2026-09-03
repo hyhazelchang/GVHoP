@@ -57,13 +57,17 @@ The output files includes:
 ls gvhop_out/FeatureSets
 # ===> GVEUKs_all.tsv  GVEUKs_top.tsv  GVOGs_all.tsv  GVOGs_top.tsv
 
-# 2. Host predicted results:
+# 2. Predicted host results:
 ls gvhop_out/Predictions
 # ===> prob_all.tsv  h_prob_all.tsv  pred_out_level0.tsv  pred_out_level1.tsv  pred_out_level2.tsv
 ```
 
+### Interpretation of results:
 
-#### Interpretation of results:
+
 
 ## Contact
 
+If you have any questions, please feel free to contact: Hsin-Ying Chang (hyhazelchang@gmail.com or as0202090@gate.sinica.edu.tw)
+
+## Citation
