@@ -35,7 +35,7 @@ Email: hyhazelchang@gmail.com
 
 Usage:
 chmod u+x GVHoP.py
-./GVHoP.py --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=10
+./GVHoP.py --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=20
 
 # Before running the GVHoP.py, please make sure to download the database, pre-trained models and check directory in GVHoP.py.
 """
@@ -390,7 +390,7 @@ def main():
     print("Initialize clf_GVOGs...")
     # Suppress warnings before loading the model, back to normal with "default" setting.
     warnings.filterwarnings('ignore', category=UserWarning)
-    for i in range(1, 4):
+    for i in range(1, 101):
         ## clf_top ##
         print(f"clf_GVOGs_top_{i}_model")
         model = joblib.load(f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
