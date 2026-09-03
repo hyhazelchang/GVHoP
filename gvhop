@@ -546,6 +546,7 @@ def main():
     count_predictions_BU(prob_out_levels_BU, all_pred_BU, samples_pred_BU)
 
     """ Output counts by levels """
+    samples = prob_out_levels_BU.index.tolist()[:len(sample_ls)]
     by_level = defaultdict(dict)
     for sample_id in samples_pred_BU:
         for level in samples_pred_BU[sample_id]:
@@ -553,6 +554,7 @@ def main():
     # Save each k to a file
     for level, data in by_level.items():
         df = pd.DataFrame(data).T
+        df = df.reindex(samples, fill_value=0)
         df.to_csv(f"{pred_outpath}pred_out_level{level}.tsv", sep='\t', index=True, header=True)
 
 if __name__ == '__main__':
