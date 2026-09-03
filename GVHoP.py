@@ -2,7 +2,7 @@
 
 
 
-import os, re, shlex, operator, argparse, glob
+import os, re, shlex, operator, argparse, glob, warnings
 import numpy as np
 import pandas as pd
 from functools import reduce
@@ -164,6 +164,16 @@ def blastparser(blast_in):
                     score_dict[hits[i]][filename] = result.iloc[i, 11]
     return score_dict
 
+def xgb_gpu_available():
+    try:
+        model = xgb.XGBClassifier(tree_method="hist", device="cuda")
+        X_dummy = np.array([[1]])
+        y_dummy = np.array([1])
+        model.fit(X_dummy, y_dummy)
+        return True
+    except Exception:
+        return False
+    
 def run_XGBclf(data_df, scaler_col, model, prob_out, hosts):
     # Load new data (unlabeled)
     X_test = data_df.to_numpy()
@@ -173,13 +183,16 @@ def run_XGBclf(data_df, scaler_col, model, prob_out, hosts):
         X_block_scaled = scaler.transform(X_block)
         X_test_final.append(X_block_scaled)
     X_test_scaled = np.concatenate(X_test_final, axis=1)
-    X_test_selected = model.named_steps['feature_selector'].transform(X_test_scaled)   
-    # Predict
-    # y_pred = model.named_steps['classifier'].predict(X_test_selected)
-    # y_predpr = model.named_steps['classifier'].predict_proba(X_test_selected)
-    y_scores = model.named_steps['classifier'].predict(X_test_selected, output_margin=True)
-    # Output the prediction results
-    # prob_out['pred_label'] = y_pred
+    if xgb_gpu_available():
+        feature_selector = model.named_steps['feature_selector']
+        clf = model.named_steps['classifier']
+    else:
+        feature_selector = model.named_steps['feature_selector']
+        clf = model.named_steps['classifier']
+        feature_selector.set_params(estimator__device="cpu", estimator__n_jobs=-1)
+        clf.set_params(device="cpu", n_jobs=-1)
+    X_test_selected = feature_selector.transform(X_test_scaled)
+    y_scores = clf.predict(X_test_selected, output_margin=True)
     prob_out_new = pd.concat([prob_out.reset_index(drop=True), 
                               pd.DataFrame(y_scores, columns = hosts).reset_index(drop=True)], 
                               axis=1)
@@ -363,30 +376,34 @@ def main():
     """ clf_GVOGs """
     # Select the samples
     hmm_df = hmm_df.reindex(sample_ls, fill_value=0)
+    # Save the dataframe for future use
+    os.makedirs(f"{out_dir}/FeatureSets/", exist_ok=True)
+    hmm_df.to_csv(f"{out_dir}/FeatureSets/GVOGs_all.tsv", sep='\t', index=True, header=True)
     # Select GVHoP top features
     top_feature_cols = open("source_data/features/GVHoP_GVOGs_top.tsv").readline().strip().split('\t')
     top_GVOGs_df = hmm_df.reindex(columns=top_feature_cols, fill_value=0)
+    # Save the dataframe for future use
+    top_GVOGs_df.to_csv(f"{out_dir}/FeatureSets/GVOGs_top.tsv", sep='\t', index=True, header=True)
     # Create a dataframe for saving probability
     prob_out = pd.DataFrame({'testset': sample_ls})
     # Load model
     print("Initialize clf_GVOGs...")
-    for i in range(1, 101):
+    # Suppress warnings before loading the model, back to normal with "default" setting.
+    warnings.filterwarnings('ignore', category=UserWarning)
+    for i in range(1, 4):
         ## clf_top ##
         print(f"clf_GVOGs_top_{i}_model")
-        with xgb.config_context(device='cpu'):  
-            model = joblib.load(f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in top_ls]
         prob_out_top = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         ## clf_intermediate ##
         print(f"clf_GVOGs_intermediate_{i}_model")
-        with xgb.config_context(device='cpu'):  
-            model = joblib.load(f"XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in intermediate_ls]
         prob_out_intermediate = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         ## clf_bottom ##
         print(f"clf_GVOGs_bottom_{i}_model")
-        with xgb.config_context(device='cpu'):  
-            model = joblib.load(f"XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in bottom_ls]
         prob_out_bottom = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         #
@@ -399,30 +416,33 @@ def main():
     """ clf_GVEUKs """
     # Select the samples
     blast_df = blast_df.reindex(sample_ls, fill_value=0)
+    # Save the dataframe for future use
+    blast_df.to_csv(f"{out_dir}/FeatureSets/GVEUKs_all.tsv", sep='\t', index=True, header=True)
     # Select GVHoP top features
     top_feature_cols = open("source_data/features/GVHoP_GVEUKs_top.tsv").readline().strip().split('\t')
     top_GVEUKs_df = blast_df.reindex(columns=top_feature_cols, fill_value=0)
+    # Save the dataframe for future use
+    top_GVEUKs_df.to_csv(f"{out_dir}/FeatureSets/GVEUKs_top.tsv", sep='\t', index=True, header=True)
     # Create a dataframe for saving probability
     prob_out = pd.DataFrame({'testset': sample_ls})
     # Load model
     print("Initialize clf_GVEUKs...")
+    # Suppress warnings before loading the model, back to normal with "default" setting.
+    warnings.filterwarnings('ignore', category=UserWarning)
     for i in range(1, 101):
         ## clf_top ##
         print(f"clf_GVEUKs_top_{i}_model")
-        with xgb.config_context(device='cpu'):
-            model = joblib.load(f"XGBclf/clf_GVEUKs/top/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVEUKs/top/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in top_ls]
         prob_out_top = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         ## clf_intermediate ##
         print(f"clf_GVEUKs_intermediate_{i}_model")
-        with xgb.config_context(device='cpu'):
-            model = joblib.load(f"XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in intermediate_ls]
         prob_out_intermediate = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         ## clf_bottom ##
         print(f"clf_GVEUKs_bottom_{i}_model")
-        with xgb.config_context(device='cpu'):
-            model = joblib.load(f"XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib")
+        model = joblib.load(f"XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in bottom_ls]
         prob_out_bottom = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         #
