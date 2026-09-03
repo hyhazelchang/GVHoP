@@ -53,9 +53,13 @@ Run GV-host predictor:
 The output files includes:
 
 ```{bash}
-# Feature sets for prediction: 
+# 1. Feature sets for prediction: 
 ls gvhop_out/FeatureSets
-## GVEUKs_all.tsv  GVEUKs_top.tsv  GVOGs_all.tsv  GVOGs_top.tsv
+# ===> GVEUKs_all.tsv  GVEUKs_top.tsv  GVOGs_all.tsv  GVOGs_top.tsv
+
+# 2. Host predicted results:
+ls gvhop_out/Predictions
+# ===> prob_all.tsv  h_prob_all.tsv  pred_out_level0.tsv  pred_out_level1.tsv  pred_out_level2.tsv
 ```
 
 

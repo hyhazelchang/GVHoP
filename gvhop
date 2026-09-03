@@ -510,7 +510,7 @@ def main():
             preds.append(predictions.cpu().numpy())
     prob_out["pred_label"] = np.concatenate(preds)
     prob_out[labels] = np.vstack(probs)
-    pred_outpath = f"{out_dir}predictions/"
+    pred_outpath = f"{out_dir}Predictions/"
     os.makedirs(pred_outpath, exist_ok=True)
     prob_out.to_csv(f"{pred_outpath}prob_all.tsv", sep="\t", index=False, header=True)
     print("Finish meta-model! ")
