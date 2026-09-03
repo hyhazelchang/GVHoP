@@ -13,6 +13,7 @@ Clone the `GVHoP` repository:
 ```{bash}
 git clone https://github.com/hyhazelchang/GVHoP.git
 ```
+Set up GVHoP
 
 ```{bash}
 cd GVHoP/
@@ -33,14 +34,14 @@ wget 'https://doi.org/10.5281/zenodo.22199562/GVHoP_database_v1.0.zip'
 unzip GVHoP_database_v1.0.zip
 ```
 
+### Example run
 
-### Activate GVHoP environment:
+#### Activate GVHoP environment:
 
 ```{bash}
 conda activate gvhop
 ```
 
-### Example run
 #### Run GV-host predictor:
 
 ```{bash}

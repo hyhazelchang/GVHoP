@@ -258,6 +258,7 @@ def climbing_inference(prob_tb, hierarch_list, node_dict, threshold):
         prob_out_levels["pred_label"].append(",".join(pred_label_index))
         prob_out_levels["pred_hierarchy"].append(",".join(pred_label_hierarch))
     df = pd.DataFrame(prob_out_levels)
+    df = df[["testset", "pred_hierarchy"] + [f"level{i}_prob" for i in range(len(hierarch_list[0]))]]
     return df
 
 def count_predictions_BU(prob_tb, all_pred, samples_pred):
@@ -509,7 +510,9 @@ def main():
             preds.append(predictions.cpu().numpy())
     prob_out["pred_label"] = np.concatenate(preds)
     prob_out[labels] = np.vstack(probs)
-    prob_out.to_csv(f"{out_dir}prob_all.tsv", sep="\t", index=False, header=True)
+    pred_outpath = f"{out_dir}predictions/"
+    os.makedirs(pred_outpath, exist_ok=True)
+    prob_out.to_csv(f"{pred_outpath}prob_all.tsv", sep="\t", index=False, header=True)
     print("Finish meta-model! ")
 
     """ Get prediction hierarchy """
@@ -517,7 +520,7 @@ def main():
     node_dict = {'Algae': [13, 3, 6, 19, 1, 14, 11, 18, 17], 'Chlorophyta': [13, 3, 1, 11], 'Otherchlorophyta': [13], 'Chlorellaceae': [3], 'Fungi': [5, 2], 'Chytridiomycota': [5], 'Chytridiomycetes': [5], 'Metazoa': [12, 10, 16, 15, 0, 9], 'Vertebrate': [12, 16, 0], 'Mammalia': [12], 'Invertebrate': [10, 15, 9], 'Malacostraca': [10], 'Othervertebrate': [16], 'Amoeba': [20, 8], 'Amoebozoa': [20, 8], 'Tubulinea': [20], 'Haptophyta': [6, 14, 18], 'Coccolithophyceae': [6], 'Heteroflagellate': [7, 4], 'Amoeboid': [7], 'Discoba': [7], 'Otheralgae': [19], 'Stramenopile': [19], 'Bathycoccaceae': [1], 'Otherhaptophyta': [14], 'Mamiellaceae': [11], 'Nonamoeboid': [4], 'Choanocafe': [4], 'Otherinvertebrate': [15], 'Blastocladiomycota': [2], 'Blastocladiomycetes': [2], 'Prymnesiaceae': [18], 'Discosea': [8], 'Aves': [0], 'Insecta': [9], 'Brownalgae': [17], 'Phaeophyceae': [17]}
     # bottom-up
     prob_out_levels_BU = climbing_inference(prob_out, hierarch_list, node_dict, 0.75)
-    prob_out_levels_BU.to_csv(f"{out_dir}h_prob_all.tsv", sep="\t", index=False, header=True)
+    prob_out_levels_BU.to_csv(f"{pred_outpath}h_prob_all.tsv", sep="\t", index=False, header=True)
 
     # Create a dictionary for storing predictions
     all_pred_BU = defaultdict(dict)
@@ -550,7 +553,7 @@ def main():
     # Save each k to a file
     for level, data in by_level.items():
         df = pd.DataFrame(data).T
-        df.to_csv(f"{out_dir}pred_out_level{level}.tsv", sep='\t', index=True, header=True)
+        df.to_csv(f"{pred_outpath}pred_out_level{level}.tsv", sep='\t', index=True, header=True)
 
 if __name__ == '__main__':
 	main()
