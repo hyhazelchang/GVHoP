@@ -16,7 +16,7 @@ git clone https://github.com/hyhazelchang/GVHoP.git
 
 ```{bash}
 cd GVHoP/
-chmod u+x GVHoP.py
+chmod u+x gvhop
 ```
 
 ### Requirements
@@ -44,7 +44,7 @@ conda activate gvhop
 #### Run GV-host predictor:
 
 ```{bash}
-./GVHoP.py --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=8
+./gvhop --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=8
 ```
 
 #### Results

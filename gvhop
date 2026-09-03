@@ -37,6 +37,8 @@ Usage:
 chmod u+x GVHoP.py
 ./GVHoP.py --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=20
 
+GVHoP --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=20
+
 # Before running the GVHoP.py, please make sure to download the database, pre-trained models and check directory in GVHoP.py.
 """
 
