@@ -36,19 +36,25 @@ unzip GVHoP_database_v1.0.zip
 
 ### Example run
 
-#### Activate GVHoP environment:
+Activate GVHoP environment:
 
 ```{bash}
 conda activate gvhop
 ```
 
-#### Run GV-host predictor:
+Run GV-host predictor:
 
 ```{bash}
 ./gvhop --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=8
 ```
 
-#### Results
+### Results
+
+The output files includes:
+=> Feature sets for prediction
+   1.
+
+
 
 #### Interpretation of results:
 
