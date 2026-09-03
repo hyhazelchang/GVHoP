@@ -53,16 +53,22 @@ Run GV-host predictor:
 The output files includes:
 
 ```{bash}
-# 1. Feature sets for prediction: 
+# ▶ Feature sets for prediction: 
 ls gvhop_out/FeatureSets
 # ===> GVEUKs_all.tsv  GVEUKs_top.tsv  GVOGs_all.tsv  GVOGs_top.tsv
 
-# 2. Predicted host results:
+# ▶ Predicted host results:
 ls gvhop_out/Predictions
 # ===> prob_all.tsv  h_prob_all.tsv  pred_out_level0.tsv  pred_out_level1.tsv  pred_out_level2.tsv
+
+# ▶ Blastp and hmmsearch results in:
+ls gvhop_out/diamond_blastp
+ls gvhop_out/hmmsearch
 ```
 
-### Interpretation of results:
+### Interpretation of results (from the example_MAGs):
+
+
 
 
 
