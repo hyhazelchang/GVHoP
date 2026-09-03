@@ -488,8 +488,9 @@ def main():
     # 5. initiate same model architecture
     model_path = "NNclf/nn_all.pt"
     model = MetaNN(n_classes=n_classes_global)
+    checkpoint = torch.load(model_path, weights_only=True, map_location=torch.device('cpu'))
+    model.load_state_dict(checkpoint)
     model.to(device)
-    model.load_state_dict(torch.load(model_path, weights_only=True))
     #
     # 6. CRITICAL: Set the model to evaluation mode
     model.eval()
