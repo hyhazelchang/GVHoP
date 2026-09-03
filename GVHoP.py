@@ -35,7 +35,7 @@ Email: hyhazelchang@gmail.com
 
 Usage:
 chmod u+x GVHoP.py
-./GVHoP.py --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=8
+./GVHoP.py --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=10
 
 # Before running the GVHoP.py, please make sure to download the database, pre-trained models and check directory in GVHoP.py.
 """
@@ -373,17 +373,20 @@ def main():
     for i in range(1, 101):
         ## clf_top ##
         print(f"clf_GVOGs_top_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
+        with xgb.config_context(device='cpu'):  
+            model = joblib.load(f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in top_ls]
         prob_out_top = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         ## clf_intermediate ##
         print(f"clf_GVOGs_intermediate_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib")
+        with xgb.config_context(device='cpu'):  
+            model = joblib.load(f"XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in intermediate_ls]
         prob_out_intermediate = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         ## clf_bottom ##
         print(f"clf_GVOGs_bottom_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib")
+        with xgb.config_context(device='cpu'):  
+            model = joblib.load(f"XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib")
         host_ls = [f"gc_s_{host}" for host in bottom_ls]
         prob_out_bottom = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         #
@@ -406,17 +409,20 @@ def main():
     for i in range(1, 101):
         ## clf_top ##
         print(f"clf_GVEUKs_top_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVEUKs/top/XGB_{i}.joblib")
+        with xgb.config_context(device='cpu'):
+            model = joblib.load(f"XGBclf/clf_GVEUKs/top/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in top_ls]
         prob_out_top = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         ## clf_intermediate ##
         print(f"clf_GVEUKs_intermediate_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib")
+        with xgb.config_context(device='cpu'):
+            model = joblib.load(f"XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in intermediate_ls]
         prob_out_intermediate = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         ## clf_bottom ##
         print(f"clf_GVEUKs_bottom_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib")
+        with xgb.config_context(device='cpu'):
+            model = joblib.load(f"XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib")
         host_ls = [f"hgt_s_{host}" for host in bottom_ls]
         prob_out_bottom = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         #
