@@ -29,7 +29,7 @@ conda env create -f env.yml
 Download the databases from ZENODO before running GVHoP:
 
 ```{bash}
-wget '10.5281/zenodo.22199562' -O GVHoP_database_v1.0.zip
+wget 'https://doi.org/10.5281/zenodo.22199562/GVHoP_database_v1.0.zip'
 unzip GVHoP_database_v1.0.zip
 ```
 
