@@ -69,6 +69,7 @@ ls gvhop_out/hmmsearch
 ### Interpretation of results (from the example_MAGs):
 
 1. h_prob_all.tsv contains test
+
 | testset               | pred_label                         | level0_prob | level1_prob | level2_prob |
 | ---                   | --- | --- | --- | --- |
 | bin.757_prodigal_prot | Othervertebrate,Vertebrate,Metazoa | 0.9935859 | 0.9994366 | 0.9994769 |
