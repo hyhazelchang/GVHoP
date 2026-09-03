@@ -68,6 +68,6 @@ ls gvhop_out/Predictions
 
 ## Contact
 
-If you have any questions, please feel free to contact: Hsin-Ying Chang (hyhazelchang@gmail.com or as0202090@gate.sinica.edu.tw)
+If you have any questions, please feel free to contact me: Hsin-Ying Chang (hyhazelchang@gmail.com or as0202090@gate.sinica.edu.tw)
 
 ## Citation
