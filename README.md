@@ -51,8 +51,10 @@ Run GV-host predictor:
 ### Results
 
 The output files includes:
-=> Feature sets for prediction
-   1.
+
+1. Feature sets for prediction: 
+
+GVEUKs_all.tsv  GVEUKs_top.tsv  GVOGs_all.tsv  GVOGs_top.tsv
 
 
 
