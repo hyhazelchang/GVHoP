@@ -512,7 +512,9 @@ def main():
     prob_out[labels] = np.vstack(probs)
     pred_outpath = f"{out_dir}Predictions/"
     os.makedirs(pred_outpath, exist_ok=True)
-    prob_out.to_csv(f"{pred_outpath}prob_all.tsv", sep="\t", index=False, header=True)
+    needed_columns = ["testset"] + labels
+    df_out = prob_out[needed_columns]
+    df_out.to_csv(f"{pred_outpath}prob_all.tsv", sep="\t", index=False, header=True)
     print("Finish meta-model! ")
 
     """ Get prediction hierarchy """
