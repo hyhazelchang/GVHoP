@@ -2,25 +2,30 @@
 
 
 
-import os, re, shlex, operator, argparse, glob, warnings
+import argparse
+import json
+import operator
+import os
+import re
+import subprocess
+import warnings
+from collections import defaultdict
+from functools import reduce
+from pathlib import Path
+from typing import cast
+
+import joblib
 import numpy as np
 import pandas as pd
-from functools import reduce
-from collections import defaultdict
-import subprocess
-from concurrent.futures import ThreadPoolExecutor
-import joblib
-import xgboost as xgb
-from sklearn.preprocessing import StandardScaler
 import torch
-from torch.utils.data import Dataset
-import torch.nn as nn
-from torch.utils.data import DataLoader
-from sklearn.compose import ColumnTransformer
-from torch.utils.data import Sampler, RandomSampler, SequentialSampler
-from GVHoP_NN import MetaDataset
-from GVHoP_NN import MetaNN
-from GVHoP_NN import SafeBatchSampler
+import xgboost as xgb
+from sklearn.pipeline import Pipeline
+from threadpoolctl import threadpool_limits
+from torch.utils.data import DataLoader, Dataset
+
+from GVHoP_NN import MetaNN, SafeBatchSampler
+
+ROOT = Path(__file__).resolve().parent
 
 
 """
@@ -42,118 +47,256 @@ GVHoP --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --s
 # Before running the GVHoP.py, please make sure to download the database, pre-trained models and check directory in GVHoP.py.
 """
 
-def cmd_hmmer(in_dir, in_file_ext, out_dir, db_dir, cpu):
-    in_files = glob.glob(in_dir + "*." + in_file_ext)
-    count = 0
-    hmm_cmd = []
-    os.makedirs(f"{out_dir}hmmsearch/", exist_ok=True)
-    for file in in_files:
-        count += 1
-        file_name = file.replace(in_dir, "")
-        file_name = file_name.replace(f".{in_file_ext}", "")
-        hmm_cmd.append(f"hmmsearch --cpu {cpu} -E 1e-5 --domtblout {out_dir}hmmsearch/{file_name}.domout {db_dir}/GVHoP_GVOGs.hmm {file}")
-    return hmm_cmd
+def validate_inputs(
+    in_dir: Path,
+    in_file_ext: str,
+    sample_file: Path,
+    db_dir: Path,
+    out_dir: Path,
+    cpu: int,
+) -> list[str]:
+    """Validate samples and reject output directories containing stale evidence."""
+    if cpu < 1:
+        raise ValueError("--cpu must be a positive integer")
+    if not in_file_ext or any(char in in_file_ext for char in "/\\\x00"):
+        raise ValueError("--in_file_ext must be a filename extension")
+    samples = sample_file.read_text(encoding="utf-8").splitlines()
+    samples = [sample.strip() for sample in samples]
+    if not samples or len(set(samples)) != len(samples):
+        raise ValueError("sample list must contain nonempty, unique identifiers")
+    for sample in samples:
+        if (
+            not sample
+            or sample in {".", ".."}
+            or any(char in sample for char in "/\\\x00")
+        ):
+            raise ValueError(f"invalid sample identifier: {sample!r}")
+    required = [in_dir / f"{sample}.{in_file_ext}" for sample in samples]
+    required.extend([db_dir / "GVHoP_GVOGs.hmm", db_dir / "GVHoP_GVEUKs.dmnd"])
+    for path in required:
+        if not path.is_file() or path.stat().st_size == 0:
+            raise ValueError(f"required input is missing or empty: {path}")
+    if out_dir.exists() and (not out_dir.is_dir() or any(out_dir.iterdir())):
+        raise ValueError(f"output directory must be absent or empty: {out_dir}")
+    return samples
 
-def cmd_diamond(in_dir, in_file_ext, out_dir, db_dir, cpu):
-    in_files = glob.glob(in_dir + "*." + in_file_ext)
-    count = 0
-    diamond_cmd = []
-    os.makedirs(f"{out_dir}diamond_blastp/", exist_ok=True)
-    for file in in_files:
-        count += 1
-        file_name = file.replace(in_dir, "")
-        file_name = file_name.replace(f".{in_file_ext}", "")
-        diamond_cmd.append(f"diamond blastp -d {db_dir}/GVHoP_GVEUKs.dmnd -q {file} -o {out_dir}diamond_blastp/{file_name}.txt -f 6 -p {cpu} --evalue 1e-5")
-    return diamond_cmd
 
-def execute_cmd(cmd, job_name):
-    os.makedirs("execute/", exist_ok=True)
-    log_file = f"execute/{job_name}.log"
-    cmd_list = shlex.split(cmd)
-    print(f"Running: {cmd}\n")
-    subprocess.run(cmd_list, stdout=open(log_file, "w"), stderr=subprocess.STDOUT, check=True)
+def check_resources() -> None:
+    """Check bundled models and feature definitions before launching searches."""
+    required = [ROOT / "NNclf/nn_all.pt", ROOT / "NNclf/preprocessor_all.joblib"]
+    for family in ("GVOGs", "GVEUKs"):
+        required.extend(
+            ROOT / f"source_data/features/GVHoP_{family}_{subset}.tsv"
+            for subset in ("all", "top")
+        )
+        for level in ("top", "intermediate", "bottom"):
+            required.extend(
+                ROOT / f"XGBclf/clf_{family}/{level}/XGB_{i}.joblib"
+                for i in range(1, 101)
+            )
+    for path in required:
+        if not path.is_file() or path.stat().st_size == 0:
+            raise ValueError(f"required model resource is missing or empty: {path}")
 
-def run_jobs(cmd, job_name):
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        executor.map(lambda c: execute_cmd(c, job_name), cmd)
 
-def hmmparser(hmmer_in):
-	hits = []
-	bit_dict = {}
-	content_dict = defaultdict(dict)
-	for filenames in os.listdir(hmmer_in):
-		if filenames.endswith("domout"):
-			acc = re.sub('.' + "domout", "", filenames)
-			f = open(hmmer_in + "/" + filenames, 'r')
-			o = open(hmmer_in + "/" + filenames + ".parsed", 'w')
-			o.write("protein_id\taccession\tbest_hit\taln_start\taln_end\tscore\ttype\n")
-			hit_dict = {}
-			start_dict = {}
-			end_dict = {}
-			bit_dict = defaultdict(int)
-			position_dict = defaultdict(list)
-			for line in f.readlines():
-				if line.startswith("#"):
-					pass
-				else:
-					newline = re.sub(r'\s+', '\t', line)
-					list1 = newline.split('\t')
-					ids = list1[0]
-					hit = re.sub("_", "", list1[3])
-					#print(hit)
-					score = float(list1[7])
-					domain_evalue = float(list1[11])
-					if score > bit_dict[ids] and domain_evalue < 1e-3:
-						ids_hit = ids +"."+ hit
-						start = int(list1[15])
-						end   = int(list1[16])
-						position_dict[ids_hit].append(start)
-						position_dict[ids_hit].append(end)
-						#print(ids_hit, score, domain_evalue, start, end)
-						hit_dict[ids] = hit
-						start_dict[ids] = start
-						end_dict[ids] = end
-						bit_dict[ids] = score
-			bit_sorted = sorted(bit_dict.items(), key=operator.itemgetter(1), reverse=True)
-			output_list = []
-			for item in bit_sorted:
-				entry = item[0]
-				score = item[1]
-				if score > 0:
-					#print entry, item, filenames
-					ids_hit = entry + "." + hit_dict[entry]
-					output_list.append(entry +"\t"+ str(hit_dict[entry]) +"\t"+ str(min(position_dict[ids_hit])) +"\t"+ str(max(position_dict[ids_hit])) +"\t"+ str(bit_dict[entry]) )
-			done = []
-			for line in output_list:
-				line1 = line.rstrip()
-				tabs = line1.split("\t")
-				ids = tabs[0]
-				hits.append(ids)
-				cog = tabs[1]
-				start = tabs[2]
-				end = tabs[3]
-				aln_length = str(abs(float(end) - float(start)))
-				score = tabs[4]
-				nr = acc + "_" + cog
-				if nr in done:
-					content_dict[acc][cog] += 1
-					o.write(ids +"\t"+ acc +"\t"+ cog +"\t"+ start +"\t"+ end +"\t"+ aln_length +"\t"+ score +"\tNH\n")
-				else:
-					content_dict[acc][cog] = 1
-					o.write(ids +"\t"+ acc +"\t"+ cog +"\t"+ start +"\t"+ end +"\t"+ aln_length +"\t"+ score +"\tBH\n")
-					done.append(nr)
-			o.close()
-	return content_dict
+def cmd_hmmer(
+    in_dir: Path,
+    in_file_ext: str,
+    out_dir: Path,
+    db_dir: Path,
+    cpu: int,
+    sample_ls: list[str],
+) -> list[list[str]]:
+    """Build HMMER commands within the total CPU budget, including its coordinator."""
+    target = out_dir / "hmmsearch"
+    target.mkdir(parents=True, exist_ok=True)
+    return [
+        [
+            "hmmsearch",
+            "--cpu",
+            str(cpu - 1),
+            "-E",
+            "1e-5",
+            "--domtblout",
+            str(target / f"{sample}.domout"),
+            str(db_dir / "GVHoP_GVOGs.hmm"),
+            str(in_dir / f"{sample}.{in_file_ext}"),
+        ]
+        for sample in sample_ls
+    ]
 
-def blastparser(blast_in):
-	# Read data from input files
-    blastfiles = [filename for filename in os.listdir(blast_in) if filename.endswith("txt")]
+
+def cmd_diamond(
+    in_dir: Path,
+    in_file_ext: str,
+    out_dir: Path,
+    db_dir: Path,
+    cpu: int,
+    sample_ls: list[str],
+) -> list[list[str]]:
+    """Build DIAMOND commands for the requested samples in their declared order."""
+    target = out_dir / "diamond_blastp"
+    target.mkdir(parents=True, exist_ok=True)
+    return [
+        [
+            "diamond",
+            "blastp",
+            "-d",
+            str(db_dir / "GVHoP_GVEUKs.dmnd"),
+            "-q",
+            str(in_dir / f"{sample}.{in_file_ext}"),
+            "-o",
+            str(target / f"{sample}.txt"),
+            "-f",
+            "6",
+            "-p",
+            str(cpu),
+            "--evalue",
+            "1e-5",
+        ]
+        for sample in sample_ls
+    ]
+
+
+def execute_cmd(command: list[str], log_file: Path) -> None:
+    """Run one search and propagate failure with its per-sample log location."""
+    with log_file.open("w", encoding="utf-8") as log:
+        try:
+            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(f"{command[0]} failed; see {log_file}") from error
+
+
+def run_jobs(commands: list[list[str]], log_dir: Path, sample_ls: list[str]) -> None:
+    """Run searches sequentially so each process can use the declared CPU budget."""
+    log_dir.mkdir(parents=True, exist_ok=True)
+    for command, sample in zip(commands, sample_ls, strict=True):
+        execute_cmd(command, log_dir / f"{sample}.log")
+
+
+def hmmparser(hmmer_in: Path) -> dict[str, dict[str, int]]:  # noqa: PLR0915  # Keep the published hit-selection algorithm intact in this inference fix.
+    """Count the best qualifying GVOG hit per protein in each sample."""
+    hits = []
+    content_dict = defaultdict(dict)
+    for filenames in (path.name for path in hmmer_in.iterdir()):
+        if filenames.endswith(".domout"):
+            acc = Path(filenames).stem
+            f = (hmmer_in / filenames).open(encoding="utf-8")
+            o = (hmmer_in / f"{filenames}.parsed").open("w", encoding="utf-8")
+            o.write(
+                "protein_id\taccession\tbest_hit\taln_start\taln_end\t"
+                "aln_length\tscore\ttype\n"
+            )
+            hit_dict = {}
+            start_dict = {}
+            end_dict = {}
+            bit_dict: defaultdict[str, float] = defaultdict(float)
+            position_dict = defaultdict(list)
+            for line in f.readlines():
+                if line.startswith("#"):
+                    pass
+                else:
+                    newline = re.sub(r"\s+", "\t", line)
+                    list1 = newline.split("\t")
+                    ids = list1[0]
+                    hit = re.sub("_", "", list1[3])
+                    score = float(list1[7])
+                    domain_evalue = float(list1[11])
+                    if score > bit_dict[ids] and domain_evalue < 1e-3:
+                        ids_hit = ids + "." + hit
+                        start = int(list1[15])
+                        end = int(list1[16])
+                        position_dict[ids_hit].append(start)
+                        position_dict[ids_hit].append(end)
+                        hit_dict[ids] = hit
+                        start_dict[ids] = start
+                        end_dict[ids] = end
+                        bit_dict[ids] = score
+            bit_sorted = sorted(
+                bit_dict.items(), key=operator.itemgetter(1), reverse=True
+            )
+            output_list = []
+            for item in bit_sorted:
+                entry = item[0]
+                score = item[1]
+                if score > 0:
+                    # print entry, item, filenames
+                    ids_hit = entry + "." + hit_dict[entry]
+                    output_list.append(
+                        entry
+                        + "\t"
+                        + str(hit_dict[entry])
+                        + "\t"
+                        + str(min(position_dict[ids_hit]))
+                        + "\t"
+                        + str(max(position_dict[ids_hit]))
+                        + "\t"
+                        + str(bit_dict[entry])
+                    )
+            done = []
+            for line in output_list:
+                line1 = line.rstrip()
+                tabs = line1.split("\t")
+                ids = tabs[0]
+                hits.append(ids)
+                cog = tabs[1]
+                start = tabs[2]
+                end = tabs[3]
+                aln_length = str(abs(float(end) - float(start)))
+                score = tabs[4]
+                nr = acc + "_" + cog
+                if nr in done:
+                    content_dict[acc][cog] += 1
+                    o.write(
+                        ids
+                        + "\t"
+                        + acc
+                        + "\t"
+                        + cog
+                        + "\t"
+                        + start
+                        + "\t"
+                        + end
+                        + "\t"
+                        + aln_length
+                        + "\t"
+                        + score
+                        + "\tNH\n"
+                    )
+                else:
+                    content_dict[acc][cog] = 1
+                    o.write(
+                        ids
+                        + "\t"
+                        + acc
+                        + "\t"
+                        + cog
+                        + "\t"
+                        + start
+                        + "\t"
+                        + end
+                        + "\t"
+                        + aln_length
+                        + "\t"
+                        + score
+                        + "\tBH\n"
+                    )
+                    done.append(nr)
+            f.close()
+            o.close()
+    return content_dict
+
+
+def blastparser(blast_in: Path) -> dict[str, dict[str, float]]:
+    """Read headerless DIAMOND output and retain each reference's maximum score."""
+    # Read data from input files
+    blastfiles = [path for path in blast_in.iterdir() if path.suffix == ".txt"]
     # Check presence/absence of hits
     score_dict = defaultdict(dict)
     for file in blastfiles:
-        filename = os.path.basename(file).replace('.'+ "txt", '')
+        filename = Path(file).stem
         try:
-            result = pd.read_csv(os.path.join(blast_in, file), sep='\t')
+            result = pd.read_csv(file, sep="\t", header=None, dtype={1: str})
         except pd.errors.EmptyDataError:
             result = pd.DataFrame()
         if not result.empty:
@@ -166,16 +309,29 @@ def blastparser(blast_in):
                     score_dict[hits[i]][filename] = result.iloc[i, 11]
     return score_dict
 
-def xgb_gpu_available():
+def xgb_gpu_available(cpu: int) -> bool:
+    """Probe once with valid labels and reject XGBoost's silent CPU fallback."""
     try:
-        model = xgb.XGBClassifier(tree_method="hist", device="cuda")
-        X_dummy = np.array([[1]])
-        y_dummy = np.array([1])
-        model.fit(X_dummy, y_dummy)
-        return True
-    except Exception:
+        model = xgb.XGBClassifier(
+            tree_method="hist", device="cuda", n_estimators=1, n_jobs=cpu
+        )
+        model.fit(np.array([[0], [1], [2], [3]]), np.array([0, 1, 0, 1]))
+    except xgb.core.XGBoostError:
         return False
-    
+    config = json.loads(model.get_booster().save_config())
+    return config["learner"]["generic_param"]["device"].startswith("cuda")
+
+
+def load_xgb_model(path: Path, cpu: int, device: str) -> Pipeline:
+    """Load a trained pipeline with the selected device and CPU budget."""
+    model = joblib.load(path)
+    model.named_steps["feature_selector"].set_params(
+        estimator__device=device, estimator__n_jobs=cpu
+    )
+    model.named_steps["classifier"].set_params(device=device, n_jobs=cpu)
+    return model
+
+
 def run_XGBclf(data_df, scaler_col, model, prob_out, hosts):
     # Load new data (unlabeled)
     X_test = data_df.to_numpy()
@@ -185,14 +341,8 @@ def run_XGBclf(data_df, scaler_col, model, prob_out, hosts):
         X_block_scaled = scaler.transform(X_block)
         X_test_final.append(X_block_scaled)
     X_test_scaled = np.concatenate(X_test_final, axis=1)
-    if xgb_gpu_available():
-        feature_selector = model.named_steps['feature_selector']
-        clf = model.named_steps['classifier']
-    else:
-        feature_selector = model.named_steps['feature_selector']
-        clf = model.named_steps['classifier']
-        feature_selector.set_params(estimator__device="cpu", estimator__n_jobs=-1)
-        clf.set_params(device="cpu", n_jobs=-1)
+    feature_selector = model.named_steps["feature_selector"]
+    clf = model.named_steps["classifier"]
     X_test_selected = feature_selector.transform(X_test_scaled)
     y_scores = clf.predict(X_test_selected, output_margin=True)
     prob_out_new = pd.concat([prob_out.reset_index(drop=True), 
@@ -258,7 +408,10 @@ def climbing_inference(prob_tb, hierarch_list, node_dict, threshold):
         prob_out_levels["pred_label"].append(",".join(pred_label_index))
         prob_out_levels["pred_hierarchy"].append(",".join(pred_label_hierarch))
     df = pd.DataFrame(prob_out_levels)
-    df = df[["testset", "pred_hierarchy"] + [f"level{i}_prob" for i in range(len(hierarch_list[0]))]]
+    df = df[
+        ["testset", "pred_label", "pred_hierarchy"]
+        + [f"level{i}_prob" for i in range(len(hierarch_list[0]))]
+    ]
     return df
 
 def count_predictions_BU(prob_tb, all_pred, samples_pred):
@@ -289,50 +442,126 @@ def flatten_nested(lst):
         else:
             if item not in flattened_lst:
                 flattened_lst.append(item)
-    return flattened_lst    
+    return flattened_lst
 
-def main():
+
+def prepare_features(
+    hmm_dict: dict[str, dict[str, int]],
+    blast_dict: dict[str, dict[str, float]],
+    sample_ls: list[str],
+    feature_dir: Path,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Keep sample rows and trained feature order, including zero-hit samples."""
+    frames = []
+    for raw_frame, family in (
+        (pd.DataFrame(hmm_dict).T, "GVOGs"),
+        (pd.DataFrame(blast_dict), "GVEUKs"),
+    ):
+        frame = raw_frame.fillna(0).astype(int)
+        frame.columns = frame.columns.astype(str)
+        frame.index.name = "testset"
+        feature_path = feature_dir / f"GVHoP_{family}_all.tsv"
+        columns = feature_path.read_text(encoding="utf-8").strip().split("\t")
+        frame = frame.reindex(columns=columns, fill_value=0)
+        frames.append(frame.reindex(sample_ls, fill_value=0))
+    return frames[0], frames[1]
+
+
+def write_prediction_counts(
+    prob_tb: pd.DataFrame,
+    sample_ls: list[str],
+    hierarch_list: list[list[str]],
+    out_dir: Path,
+) -> None:
+    """Export accepted replicate counts at each level using the input sample IDs."""
+    all_pred = defaultdict(dict)
+    for sample in sample_ls:
+        all_pred[sample] = dict.fromkeys(flatten_nested(hierarch_list), 0)
+        all_pred[sample]["root"] = 0
+    samples_pred = defaultdict(lambda: defaultdict(dict))
+    reversed_hierarchy = [branch[::-1] for branch in sorted(hierarch_list)]
+    for level in range(len(hierarch_list[0])):
+        labels = [branch[level] for branch in reversed_hierarchy]
+        for sample in sample_ls:
+            samples_pred[sample][level] = dict.fromkeys(labels, 0)
+    count_predictions_BU(prob_tb, all_pred, samples_pred)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for level in range(len(hierarch_list[0])):
+        frame = pd.DataFrame(
+            {sample: samples_pred[sample][level] for sample in sample_ls}
+        ).T
+        frame = frame.reindex(sample_ls, fill_value=0)
+        frame.index.name = "testset"
+        frame.to_csv(
+            out_dir / f"pred_out_level{level}.tsv", sep="\t", index=True, header=True
+        )
+
+
+def main() -> None:  # noqa: PLR0915  # Preserve the existing model sequence while fixing its inputs and execution.
+    """Validate inputs, run searches, and export the trained ensemble predictions."""
     parser = argparse.ArgumentParser(
             description=("Giant Virus-Host Predictor"),
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--in_dir",
-                        type=str,
-                        default="../example_MAGs/",
-                        help="The directory of input files.")
+    parser.add_argument(
+        "--in_dir",
+        type=Path,
+        default=ROOT / "example_MAGs",
+        help="The directory of input files.",
+    )
     parser.add_argument("--in_file_ext",
                         required=True,
                         default="faa",
                         type=str)
-    parser.add_argument("--sample_ls",
-                        type=str,
-						required=True,
-                        default="./source_data/example_inputs/sample.ls",
-                        help="The list of samples to be predicted.")
-    parser.add_argument("--db_dir",
-                        default="GVHoP_database_v1.0/",
-                        required=True,
-                        type=str,
-                        help="Directory containing database files.")
-    parser.add_argument("--out_dir",
-                        type=str,
-						required=True,
-                        default='./outdir/',
-                        help="The directory for output files.") 
-    parser.add_argument("--cpu",
-                        type=str,
-						required=True,
-                        default='8',
-                        help="The number of CPU cores to use.") 
-    
+    parser.add_argument(
+        "--sample_ls",
+        type=Path,
+        required=True,
+        default="./source_data/example_inputs/sample.ls",
+        help="The list of samples to be predicted.",
+    )
+    parser.add_argument(
+        "--db_dir",
+        default="GVHoP_database_v1.0/",
+        required=True,
+        type=Path,
+        help="Directory containing database files.",
+    )
+    parser.add_argument(
+        "--out_dir",
+        type=Path,
+        required=True,
+        default="./outdir/",
+        help="The directory for output files.",
+    )
+    parser.add_argument(
+        "--cpu",
+        type=int,
+        required=True,
+        default=8,
+        help="Total CPU budget; searches run sequentially.",
+    )
+
     # Defining variables from input
     args = parser.parse_args()
     in_dir = args.in_dir
     in_file_ext = args.in_file_ext
-    sample_ls = [line.strip() for line in open(args.sample_ls, "r")]
+    sample_ls = validate_inputs(
+        args.in_dir,
+        args.in_file_ext,
+        args.sample_ls,
+        args.db_dir,
+        args.out_dir,
+        args.cpu,
+    )
     db_dir = args.db_dir
     out_dir = args.out_dir
     cpu = args.cpu
+    check_resources()
+    # Apply the CLI budget to native pools for the lifetime of this process.
+    threadpool_limits(limits=cpu)
+    torch.set_num_threads(cpu)
+    xgb_device = "cuda" if xgb_gpu_available(cpu) else "cpu"
 
     """ Prepare host lists """    
     top_ls = ['Algae', 'Amoeba', 'Fungi', 'Heteroflagellate', 'Metazoa']
@@ -344,34 +573,21 @@ def main():
 
     """ Run Diamond and HMMER """
     print("Running Diamond and HMMER...")
-    hmmer_cmd = cmd_hmmer(in_dir, in_file_ext, out_dir, db_dir, cpu)
-    diamond_cmd = cmd_diamond(in_dir, in_file_ext, out_dir, db_dir, cpu)
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        executor.submit(run_jobs(diamond_cmd, "diamond_blastp"))
-        executor.submit(run_jobs(hmmer_cmd, "hmmer"))
+    hmmer_cmd = cmd_hmmer(in_dir, in_file_ext, out_dir, db_dir, cpu, sample_ls)
+    diamond_cmd = cmd_diamond(in_dir, in_file_ext, out_dir, db_dir, cpu, sample_ls)
+    run_jobs(diamond_cmd, out_dir / "execute/diamond_blastp", sample_ls)
+    run_jobs(hmmer_cmd, out_dir / "execute/hmmer", sample_ls)
     print("Finished running Diamond and HMMER!")
 
     """ Parse results """
     print("Parsing results...")
-    hmm_dict = hmmparser(f"{out_dir}hmmsearch/")
-    blast_dict = blastparser(f"{out_dir}diamond_blastp/")
+    hmm_dict = hmmparser(out_dir / "hmmsearch")
+    blast_dict = blastparser(out_dir / "diamond_blastp")
 
     # Combine all rows into a DataFrame
-    hmm_df = pd.DataFrame(hmm_dict)
-    blast_df = pd.DataFrame(blast_dict)
-    hmm_df = hmm_df.fillna(0).astype(int)
-    blast_df = blast_df.fillna(0).astype(int)
-    hmm_df.columns = hmm_df.columns.astype(str)
-    blast_df.columns = blast_df.columns.astype(str)
-    hmm_df.index.name = 'testset'
-    blast_df.index.name = 'testset'
-    with open("source_data/features/GVHoP_GVOGs_all.tsv", 'r') as f:
-        wanted_columns = f.readline().strip().split('\t')
-    hmm_df = hmm_df.reindex(columns=wanted_columns, fill_value=0)
-    with open("source_data/features/GVHoP_GVEUKs_all.tsv", 'r') as f:
-        wanted_columns = f.readline().strip().split('\t')
-    blast_df = blast_df.reindex(columns=wanted_columns, fill_value=0)
-
+    hmm_df, blast_df = prepare_features(
+        hmm_dict, blast_dict, sample_ls, ROOT / "source_data/features"
+    )
 
     # Create the dictionary for saving the raw scores
     prob_out_dict = defaultdict(list)
@@ -383,7 +599,12 @@ def main():
     os.makedirs(f"{out_dir}/FeatureSets/", exist_ok=True)
     hmm_df.to_csv(f"{out_dir}/FeatureSets/GVOGs_all.tsv", sep='\t', index=True, header=True)
     # Select GVHoP top features
-    top_feature_cols = open("source_data/features/GVHoP_GVOGs_top.tsv").readline().strip().split('\t')
+    top_feature_cols = (
+        (ROOT / "source_data/features/GVHoP_GVOGs_top.tsv")
+        .read_text(encoding="utf-8")
+        .strip()
+        .split("\t")
+    )
     top_GVOGs_df = hmm_df.reindex(columns=top_feature_cols, fill_value=0)
     # Save the dataframe for future use
     top_GVOGs_df.to_csv(f"{out_dir}/FeatureSets/GVOGs_top.tsv", sep='\t', index=True, header=True)
@@ -396,17 +617,23 @@ def main():
     for i in range(1, 101):
         ## clf_top ##
         print(f"clf_GVOGs_top_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
+        model = load_xgb_model(
+            ROOT / f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib", cpu, xgb_device
+        )
         host_ls = [f"gc_s_{host}" for host in top_ls]
         prob_out_top = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         ## clf_intermediate ##
         print(f"clf_GVOGs_intermediate_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib")
+        model = load_xgb_model(
+            ROOT / f"XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib", cpu, xgb_device
+        )
         host_ls = [f"gc_s_{host}" for host in intermediate_ls]
         prob_out_intermediate = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         ## clf_bottom ##
         print(f"clf_GVOGs_bottom_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib")
+        model = load_xgb_model(
+            ROOT / f"XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib", cpu, xgb_device
+        )
         host_ls = [f"gc_s_{host}" for host in bottom_ls]
         prob_out_bottom = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
         #
@@ -422,7 +649,12 @@ def main():
     # Save the dataframe for future use
     blast_df.to_csv(f"{out_dir}/FeatureSets/GVEUKs_all.tsv", sep='\t', index=True, header=True)
     # Select GVHoP top features
-    top_feature_cols = open("source_data/features/GVHoP_GVEUKs_top.tsv").readline().strip().split('\t')
+    top_feature_cols = (
+        (ROOT / "source_data/features/GVHoP_GVEUKs_top.tsv")
+        .read_text(encoding="utf-8")
+        .strip()
+        .split("\t")
+    )
     top_GVEUKs_df = blast_df.reindex(columns=top_feature_cols, fill_value=0)
     # Save the dataframe for future use
     top_GVEUKs_df.to_csv(f"{out_dir}/FeatureSets/GVEUKs_top.tsv", sep='\t', index=True, header=True)
@@ -435,17 +667,23 @@ def main():
     for i in range(1, 101):
         ## clf_top ##
         print(f"clf_GVEUKs_top_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVEUKs/top/XGB_{i}.joblib")
+        model = load_xgb_model(
+            ROOT / f"XGBclf/clf_GVEUKs/top/XGB_{i}.joblib", cpu, xgb_device
+        )
         host_ls = [f"hgt_s_{host}" for host in top_ls]
         prob_out_top = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         ## clf_intermediate ##
         print(f"clf_GVEUKs_intermediate_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib")
+        model = load_xgb_model(
+            ROOT / f"XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib", cpu, xgb_device
+        )
         host_ls = [f"hgt_s_{host}" for host in intermediate_ls]
         prob_out_intermediate = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         ## clf_bottom ##
         print(f"clf_GVEUKs_bottom_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib")
+        model = load_xgb_model(
+            ROOT / f"XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib", cpu, xgb_device
+        )
         host_ls = [f"hgt_s_{host}" for host in bottom_ls]
         prob_out_bottom = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
         #
@@ -474,7 +712,7 @@ def main():
     X_test = meta_df[FEATURES]
     #
     # 1. Load the preprocessor back into memory
-    loaded_preprocessor = joblib.load("NNclf/preprocessor_all.joblib")
+    loaded_preprocessor = joblib.load(ROOT / "NNclf/preprocessor_all.joblib")
     #
     # 2. Transform new data (CRITICAL: Use .transform(), NOT .fit_transform())
     X_test_scaled = loaded_preprocessor.transform(X_test)
@@ -486,10 +724,16 @@ def main():
     # 4. load dataset
     test_dataset = torch.tensor(X_test_scaled, dtype=torch.float32)
     safe_sampler = SafeBatchSampler(test_dataset, batch_size=8, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_sampler=safe_sampler, num_workers=2, pin_memory=True)
+    test_loader = DataLoader(
+        # Tensor supplies the map-style dataset's __len__ and __getitem__ methods.
+        cast(Dataset[torch.Tensor], test_dataset),
+        batch_sampler=safe_sampler,
+        num_workers=0,
+        pin_memory=device.type == "cuda",
+    )
     #
     # 5. initiate same model architecture
-    model_path = "NNclf/nn_all.pt"
+    model_path = ROOT / "NNclf/nn_all.pt"
     model = MetaNN(n_classes=n_classes_global)
     checkpoint = torch.load(model_path, weights_only=True, map_location=torch.device('cpu'))
     model.load_state_dict(checkpoint)
@@ -510,11 +754,11 @@ def main():
             preds.append(predictions.cpu().numpy())
     prob_out["pred_label"] = np.concatenate(preds)
     prob_out[labels] = np.vstack(probs)
-    pred_outpath = f"{out_dir}Predictions/"
+    pred_outpath = out_dir / "Predictions"
     os.makedirs(pred_outpath, exist_ok=True)
     needed_columns = ["testset"] + labels
     df_out = prob_out[needed_columns]
-    df_out.to_csv(f"{pred_outpath}prob_all.tsv", sep="\t", index=False, header=True)
+    df_out.to_csv(pred_outpath / "prob_all.tsv", sep="\t", index=False, header=True)
     print("Finish meta-model! ")
 
     """ Get prediction hierarchy """
@@ -522,42 +766,11 @@ def main():
     node_dict = {'Algae': [13, 3, 6, 19, 1, 14, 11, 18, 17], 'Chlorophyta': [13, 3, 1, 11], 'Otherchlorophyta': [13], 'Chlorellaceae': [3], 'Fungi': [5, 2], 'Chytridiomycota': [5], 'Chytridiomycetes': [5], 'Metazoa': [12, 10, 16, 15, 0, 9], 'Vertebrate': [12, 16, 0], 'Mammalia': [12], 'Invertebrate': [10, 15, 9], 'Malacostraca': [10], 'Othervertebrate': [16], 'Amoeba': [20, 8], 'Amoebozoa': [20, 8], 'Tubulinea': [20], 'Haptophyta': [6, 14, 18], 'Coccolithophyceae': [6], 'Heteroflagellate': [7, 4], 'Amoeboid': [7], 'Discoba': [7], 'Otheralgae': [19], 'Stramenopile': [19], 'Bathycoccaceae': [1], 'Otherhaptophyta': [14], 'Mamiellaceae': [11], 'Nonamoeboid': [4], 'Choanocafe': [4], 'Otherinvertebrate': [15], 'Blastocladiomycota': [2], 'Blastocladiomycetes': [2], 'Prymnesiaceae': [18], 'Discosea': [8], 'Aves': [0], 'Insecta': [9], 'Brownalgae': [17], 'Phaeophyceae': [17]}
     # bottom-up
     prob_out_levels_BU = climbing_inference(prob_out, hierarch_list, node_dict, 0.75)
-    prob_out_levels_BU.to_csv(f"{pred_outpath}h_prob_all.tsv", sep="\t", index=False, header=True)
+    prob_out_levels_BU.to_csv(
+        pred_outpath / "h_prob_all.tsv", sep="\t", index=False, header=True
+    )
+    write_prediction_counts(prob_out_levels_BU, sample_ls, hierarch_list, pred_outpath)
 
-    # Create a dictionary for storing predictions
-    all_pred_BU = defaultdict(dict)
-    sorted_hierarch_list = sorted(hierarch_list)
-    flat_hierarch_list = flatten_nested(sorted_hierarch_list)
-    for label in flat_hierarch_list:
-        for id in sample_ls:
-            all_pred_BU[id][label] = 0
-    ## add a root
-    for id in sample_ls:
-        all_pred_BU[id]["root"] = 0
-    
-    # Create a dictionary for storing predictions of listed samples
-    samples_pred_BU = defaultdict(lambda: defaultdict(dict))
-    rev_hierarch_list = [sublist[::-1] for sublist in sorted_hierarch_list]
-    for i in range(len(hierarch_list[0])):
-        labels = [sublist[i] for sublist in rev_hierarch_list]
-        for id in set(prob_out["testset"]): ##sample_ids
-            for label in labels:
-                samples_pred_BU[id][i][label] = 0
-		
-    # Count predictions
-    count_predictions_BU(prob_out_levels_BU, all_pred_BU, samples_pred_BU)
-
-    """ Output counts by levels """
-    samples = prob_out_levels_BU.index.tolist()[:len(sample_ls)]
-    by_level = defaultdict(dict)
-    for sample_id in samples_pred_BU:
-        for level in samples_pred_BU[sample_id]:
-            by_level[level][sample_id] = samples_pred_BU[sample_id][level]
-    # Save each k to a file
-    for level, data in by_level.items():
-        df = pd.DataFrame(data).T
-        df = df.reindex(samples, fill_value=0)
-        df.to_csv(f"{pred_outpath}pred_out_level{level}.tsv", sep='\t', index=True, header=True)
 
 if __name__ == '__main__':
-	main()
+    main()
