@@ -119,3 +119,5 @@ ls gvhop_out/hmmsearch
 If you have any questions, please feel free to contact me: Hsin-Ying Chang (hyhazelchang@gmail.com or as0202090@gate.sinica.edu.tw)
 
 ## Citation
+
+Machine learning prediction of eukaryotic hosts for giant viruses. https://doi.org/10.64898/2026.09.08.750034
