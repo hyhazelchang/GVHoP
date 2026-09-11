@@ -40,6 +40,18 @@ chmod u+x gvhop
 # Before running the GVHoP.py, please make sure to download the database, pre-trained models and check directory in ./gvhop
 """
 
+def check_database_location(db_dir):
+    if not os.path.exists(db_dir):
+        raise FileNotFoundError(f"Database directory '{db_dir}' does not exist. Please check the path.")
+    else:
+        required_files = ["GVHoP_GVOGs.hmm", "GVHoP_GVEUKs.dmnd"]
+        for file in required_files:
+            if not os.path.exists(os.path.join(db_dir, file)):
+                raise FileNotFoundError(f"Required database file '{file}' not found in '{db_dir}'. Please check the database files.")
+            else:
+                print(f"Found required database file: {db_dir}{file}")
+                return True
+
 def cmd_hmmer(in_dir, in_file_ext, out_dir, db_dir, cpu):
     in_files = glob.glob(in_dir + "*." + in_file_ext)
     count = 0
@@ -256,7 +268,7 @@ def climbing_inference(prob_tb, hierarch_list, node_dict, threshold):
         prob_out_levels["pred_label"].append(",".join(pred_label_index))
         prob_out_levels["pred_hierarchy"].append(",".join(pred_label_hierarch))
     df = pd.DataFrame(prob_out_levels)
-    df = df[["testset", "pred_hierarchy"] + [f"level{i}_prob" for i in range(len(hierarch_list[0]))]]
+    df = df[["testset", "pred_label", "pred_hierarchy"] + [f"level{i}_prob" for i in range(len(hierarch_list[0]))]]
     return df
 
 def count_predictions_BU(prob_tb, all_pred, samples_pred):
@@ -341,221 +353,224 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     """ Run Diamond and HMMER """
-    print("Running Diamond and HMMER...")
-    hmmer_cmd = cmd_hmmer(in_dir, in_file_ext, out_dir, db_dir, cpu)
-    diamond_cmd = cmd_diamond(in_dir, in_file_ext, out_dir, db_dir, cpu)
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        executor.submit(run_jobs(diamond_cmd, "diamond_blastp"))
-        executor.submit(run_jobs(hmmer_cmd, "hmmer"))
-    print("Finished running Diamond and HMMER!")
+    if check_database_location(db_dir):
+            
+        print("Running Diamond and HMMER...")
+        hmmer_cmd = cmd_hmmer(in_dir, in_file_ext, out_dir, db_dir, cpu)
+        diamond_cmd = cmd_diamond(in_dir, in_file_ext, out_dir, db_dir, cpu)
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            executor.submit(run_jobs(diamond_cmd, "diamond_blastp"))
+            executor.submit(run_jobs(hmmer_cmd, "hmmer"))
+        print("Finished running Diamond and HMMER!")
 
-    """ Parse results """
-    print("Parsing results...")
-    hmm_dict = hmmparser(f"{out_dir}hmmsearch/")
-    blast_dict = blastparser(f"{out_dir}diamond_blastp/")
+        """ Parse results """
+        print("Parsing results...")
+        hmm_dict = hmmparser(f"{out_dir}hmmsearch/")
+        blast_dict = blastparser(f"{out_dir}diamond_blastp/")
 
-    # Combine all rows into a DataFrame
-    hmm_df = pd.DataFrame(hmm_dict)
-    blast_df = pd.DataFrame(blast_dict)
-    hmm_df = hmm_df.fillna(0).astype(int)
-    blast_df = blast_df.fillna(0).astype(int)
-    hmm_df.columns = hmm_df.columns.astype(str)
-    blast_df.columns = blast_df.columns.astype(str)
-    hmm_df.index.name = 'testset'
-    blast_df.index.name = 'testset'
-    with open("source_data/features/GVHoP_GVOGs_all.tsv", 'r') as f:
-        wanted_columns = f.readline().strip().split('\t')
-    hmm_df = hmm_df.reindex(columns=wanted_columns, fill_value=0)
-    with open("source_data/features/GVHoP_GVEUKs_all.tsv", 'r') as f:
-        wanted_columns = f.readline().strip().split('\t')
-    blast_df = blast_df.reindex(columns=wanted_columns, fill_value=0)
+        # Combine all rows into a DataFrame
+        hmm_df = pd.DataFrame(hmm_dict)
+        blast_df = pd.DataFrame(blast_dict)
+        hmm_df = hmm_df.fillna(0).astype(int)
+        blast_df = blast_df.fillna(0).astype(int)
+        hmm_df.columns = hmm_df.columns.astype(str)
+        blast_df.columns = blast_df.columns.astype(str)
+        hmm_df.index.name = 'testset'
+        blast_df.index.name = 'testset'
+        with open("source_data/features/GVHoP_GVOGs_all.tsv", 'r') as f:
+            wanted_columns = f.readline().strip().split('\t')
+        hmm_df = hmm_df.reindex(columns=wanted_columns, fill_value=0)
+        with open("source_data/features/GVHoP_GVEUKs_all.tsv", 'r') as f:
+            wanted_columns = f.readline().strip().split('\t')
+        blast_df = blast_df.reindex(columns=wanted_columns, fill_value=0)
 
 
-    # Create the dictionary for saving the raw scores
-    prob_out_dict = defaultdict(list)
+        # Create the dictionary for saving the raw scores
+        prob_out_dict = defaultdict(list)
 
-    """ clf_GVOGs """
-    # Select the samples
-    hmm_df = hmm_df.reindex(sample_ls, fill_value=0)
-    # Save the dataframe for future use
-    os.makedirs(f"{out_dir}/FeatureSets/", exist_ok=True)
-    hmm_df.to_csv(f"{out_dir}/FeatureSets/GVOGs_all.tsv", sep='\t', index=True, header=True)
-    # Select GVHoP top features
-    top_feature_cols = open("source_data/features/GVHoP_GVOGs_top.tsv").readline().strip().split('\t')
-    top_GVOGs_df = hmm_df.reindex(columns=top_feature_cols, fill_value=0)
-    # Save the dataframe for future use
-    top_GVOGs_df.to_csv(f"{out_dir}/FeatureSets/GVOGs_top.tsv", sep='\t', index=True, header=True)
-    # Create a dataframe for saving probability
-    prob_out = pd.DataFrame({'testset': sample_ls})
-    # Load model
-    print("Initialize clf_GVOGs...")
-    # Suppress warnings before loading the model, back to normal with "default" setting.
-    warnings.filterwarnings('ignore', category=UserWarning)
-    for i in range(1, 101):
-        ## clf_top ##
-        print(f"clf_GVOGs_top_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
-        host_ls = [f"gc_s_{host}" for host in top_ls]
-        prob_out_top = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
-        ## clf_intermediate ##
-        print(f"clf_GVOGs_intermediate_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib")
-        host_ls = [f"gc_s_{host}" for host in intermediate_ls]
-        prob_out_intermediate = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
-        ## clf_bottom ##
-        print(f"clf_GVOGs_bottom_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib")
-        host_ls = [f"gc_s_{host}" for host in bottom_ls]
-        prob_out_bottom = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
+        """ clf_GVOGs """
+        # Select the samples
+        hmm_df = hmm_df.reindex(sample_ls, fill_value=0)
+        # Save the dataframe for future use
+        os.makedirs(f"{out_dir}/FeatureSets/", exist_ok=True)
+        hmm_df.to_csv(f"{out_dir}/FeatureSets/GVOGs_all.tsv", sep='\t', index=True, header=True)
+        # Select GVHoP top features
+        top_feature_cols = open("source_data/features/GVHoP_GVOGs_top.tsv").readline().strip().split('\t')
+        top_GVOGs_df = hmm_df.reindex(columns=top_feature_cols, fill_value=0)
+        # Save the dataframe for future use
+        top_GVOGs_df.to_csv(f"{out_dir}/FeatureSets/GVOGs_top.tsv", sep='\t', index=True, header=True)
+        # Create a dataframe for saving probability
+        prob_out = pd.DataFrame({'testset': sample_ls})
+        # Load model
+        print("Initialize clf_GVOGs...")
+        # Suppress warnings before loading the model, back to normal with "default" setting.
+        warnings.filterwarnings('ignore', category=UserWarning)
+        for i in range(1, 101):
+            ## clf_top ##
+            print(f"clf_GVOGs_top_{i}_model")
+            model = joblib.load(f"XGBclf/clf_GVOGs/top/XGB_{i}.joblib")
+            host_ls = [f"gc_s_{host}" for host in top_ls]
+            prob_out_top = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
+            ## clf_intermediate ##
+            print(f"clf_GVOGs_intermediate_{i}_model")
+            model = joblib.load(f"XGBclf/clf_GVOGs/intermediate/XGB_{i}.joblib")
+            host_ls = [f"gc_s_{host}" for host in intermediate_ls]
+            prob_out_intermediate = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
+            ## clf_bottom ##
+            print(f"clf_GVOGs_bottom_{i}_model")
+            model = joblib.load(f"XGBclf/clf_GVOGs/bottom/XGB_{i}.joblib")
+            host_ls = [f"gc_s_{host}" for host in bottom_ls]
+            prob_out_bottom = run_XGBclf(hmm_df, 8293, model, prob_out, host_ls)
+            #
+            prob_out_dfs = [prob_out_top, prob_out_intermediate, prob_out_bottom]
+            # merge the dataframes on the testset
+            prob_out_new = reduce(lambda left, right: pd.merge(left, right, on='testset', how='outer'), prob_out_dfs)
+            prob_out_dict[i].append(prob_out_new)
+        print("Finish clf_GVOGs!")
+
+        """ clf_GVEUKs """
+        # Select the samples
+        blast_df = blast_df.reindex(sample_ls, fill_value=0)
+        # Save the dataframe for future use
+        blast_df.to_csv(f"{out_dir}/FeatureSets/GVEUKs_all.tsv", sep='\t', index=True, header=True)
+        # Select GVHoP top features
+        top_feature_cols = open("source_data/features/GVHoP_GVEUKs_top.tsv").readline().strip().split('\t')
+        top_GVEUKs_df = blast_df.reindex(columns=top_feature_cols, fill_value=0)
+        # Save the dataframe for future use
+        top_GVEUKs_df.to_csv(f"{out_dir}/FeatureSets/GVEUKs_top.tsv", sep='\t', index=True, header=True)
+        # Create a dataframe for saving probability
+        prob_out = pd.DataFrame({'testset': sample_ls})
+        # Load model
+        print("Initialize clf_GVEUKs...")
+        # Suppress warnings before loading the model, back to normal with "default" setting.
+        warnings.filterwarnings('ignore', category=UserWarning)
+        for i in range(1, 101):
+            ## clf_top ##
+            print(f"clf_GVEUKs_top_{i}_model")
+            model = joblib.load(f"XGBclf/clf_GVEUKs/top/XGB_{i}.joblib")
+            host_ls = [f"hgt_s_{host}" for host in top_ls]
+            prob_out_top = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
+            ## clf_intermediate ##
+            print(f"clf_GVEUKs_intermediate_{i}_model")
+            model = joblib.load(f"XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib")
+            host_ls = [f"hgt_s_{host}" for host in intermediate_ls]
+            prob_out_intermediate = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
+            ## clf_bottom ##
+            print(f"clf_GVEUKs_bottom_{i}_model")
+            model = joblib.load(f"XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib")
+            host_ls = [f"hgt_s_{host}" for host in bottom_ls]
+            prob_out_bottom = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
+            #
+            prob_out_dfs = [prob_out_top, prob_out_intermediate, prob_out_bottom]
+            # merge the dataframes on the testset
+            prob_out_new = reduce(lambda left, right: pd.merge(left, right, on='testset', how='outer'), prob_out_dfs)
+            prob_out_dict[i].append(prob_out_new)
+        print("Finish clf_GVEUKs!")
+
+        """ GVHoP_clf_integration """
+        # Integrate the feature sets
+        top_feat = top_GVOGs_df.merge(top_GVEUKs_df, on='testset', how='left')
+        for sample, dfs in prob_out_dict.items():
+            meta_df_RawScores = dfs[0].merge(dfs[1], on="testset", how="left")
+            meta_df_feat = meta_df_RawScores.merge(top_feat, on="testset", how="left")
+            prob_out_dict[sample] = meta_df_feat
+        meta_df = pd.concat(prob_out_dict.values(), ignore_index=True)
         #
-        prob_out_dfs = [prob_out_top, prob_out_intermediate, prob_out_bottom]
-        # merge the dataframes on the testset
-        prob_out_new = reduce(lambda left, right: pd.merge(left, right, on='testset', how='outer'), prob_out_dfs)
-        prob_out_dict[i].append(prob_out_new)
-    print("Finish clf_GVOGs!")
-
-    """ clf_GVEUKs """
-    # Select the samples
-    blast_df = blast_df.reindex(sample_ls, fill_value=0)
-    # Save the dataframe for future use
-    blast_df.to_csv(f"{out_dir}/FeatureSets/GVEUKs_all.tsv", sep='\t', index=True, header=True)
-    # Select GVHoP top features
-    top_feature_cols = open("source_data/features/GVHoP_GVEUKs_top.tsv").readline().strip().split('\t')
-    top_GVEUKs_df = blast_df.reindex(columns=top_feature_cols, fill_value=0)
-    # Save the dataframe for future use
-    top_GVEUKs_df.to_csv(f"{out_dir}/FeatureSets/GVEUKs_top.tsv", sep='\t', index=True, header=True)
-    # Create a dataframe for saving probability
-    prob_out = pd.DataFrame({'testset': sample_ls})
-    # Load model
-    print("Initialize clf_GVEUKs...")
-    # Suppress warnings before loading the model, back to normal with "default" setting.
-    warnings.filterwarnings('ignore', category=UserWarning)
-    for i in range(1, 101):
-        ## clf_top ##
-        print(f"clf_GVEUKs_top_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVEUKs/top/XGB_{i}.joblib")
-        host_ls = [f"hgt_s_{host}" for host in top_ls]
-        prob_out_top = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
-        ## clf_intermediate ##
-        print(f"clf_GVEUKs_intermediate_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVEUKs/intermediate/XGB_{i}.joblib")
-        host_ls = [f"hgt_s_{host}" for host in intermediate_ls]
-        prob_out_intermediate = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
-        ## clf_bottom ##
-        print(f"clf_GVEUKs_bottom_{i}_model")
-        model = joblib.load(f"XGBclf/clf_GVEUKs/bottom/XGB_{i}.joblib")
-        host_ls = [f"hgt_s_{host}" for host in bottom_ls]
-        prob_out_bottom = run_XGBclf(blast_df, 57250, model, prob_out, host_ls)
+        # Get feature arrays
+        FEATURES = meta_df.columns[1:]
+        labels = bottom_ls
+        n_classes_global = 21
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print("Initialize meta-model... ")
+        # 0. load GVMAGs testing set
+        X_test = meta_df[FEATURES]
         #
-        prob_out_dfs = [prob_out_top, prob_out_intermediate, prob_out_bottom]
-        # merge the dataframes on the testset
-        prob_out_new = reduce(lambda left, right: pd.merge(left, right, on='testset', how='outer'), prob_out_dfs)
-        prob_out_dict[i].append(prob_out_new)
-    print("Finish clf_GVEUKs!")
+        # 1. Load the preprocessor back into memory
+        loaded_preprocessor = joblib.load("NNclf/preprocessor_all.joblib")
+        #
+        # 2. Transform new data (CRITICAL: Use .transform(), NOT .fit_transform())
+        X_test_scaled = loaded_preprocessor.transform(X_test)
+        X_test_scaled[np.isnan(X_test_scaled)] = 0
+        #
+        # 3. make a df to store the data
+        prob_out = pd.DataFrame(meta_df["testset"])
+        #
+        # 4. load dataset
+        test_dataset = torch.tensor(X_test_scaled, dtype=torch.float32)
+        safe_sampler = SafeBatchSampler(test_dataset, batch_size=8, shuffle=False)
+        test_loader = DataLoader(test_dataset, batch_sampler=safe_sampler, num_workers=2, pin_memory=True)
+        #
+        # 5. initiate same model architecture
+        model_path = "NNclf/nn_all.pt"
+        model = MetaNN(n_classes=n_classes_global)
+        checkpoint = torch.load(model_path, weights_only=True, map_location=torch.device('cpu'))
+        model.load_state_dict(checkpoint)
+        model.to(device)
+        #
+        # 6. CRITICAL: Set the model to evaluation mode
+        model.eval()
+        probs = []
+        preds = []
+        with torch.no_grad():
+            for xb in test_loader:
+                xb = xb.to(device)
+                logits = model(xb)
+                # Apply Softmax to convert logits to probabilities
+                probabilities = torch.softmax(logits, dim=1)
+                probs.append(probabilities.cpu().numpy())
+                predictions = torch.argmax(logits, dim=1)
+                preds.append(predictions.cpu().numpy())
+        prob_out["pred_label"] = np.concatenate(preds)
+        prob_out[labels] = np.vstack(probs)
+        pred_outpath = f"{out_dir}Predictions/"
+        os.makedirs(pred_outpath, exist_ok=True)
+        needed_columns = ["testset"] + labels
+        df_out = prob_out[needed_columns]
+        df_out.to_csv(f"{pred_outpath}prob_all.tsv", sep="\t", index=False, header=True)
+        print("Finish meta-model! ")
 
-    """ GVHoP_clf_integration """
-    # Integrate the feature sets
-    top_feat = top_GVOGs_df.merge(top_GVEUKs_df, on='testset', how='left')
-    for sample, dfs in prob_out_dict.items():
-        meta_df_RawScores = dfs[0].merge(dfs[1], on="testset", how="left")
-        meta_df_feat = meta_df_RawScores.merge(top_feat, on="testset", how="left")
-        prob_out_dict[sample] = meta_df_feat
-    meta_df = pd.concat(prob_out_dict.values(), ignore_index=True)
-    #
-    # Get feature arrays
-    FEATURES = meta_df.columns[1:]
-    labels = bottom_ls
-    n_classes_global = 21
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Initialize meta-model... ")
-    # 0. load GVMAGs testing set
-    X_test = meta_df[FEATURES]
-    #
-    # 1. Load the preprocessor back into memory
-    loaded_preprocessor = joblib.load("NNclf/preprocessor_all.joblib")
-    #
-    # 2. Transform new data (CRITICAL: Use .transform(), NOT .fit_transform())
-    X_test_scaled = loaded_preprocessor.transform(X_test)
-    X_test_scaled[np.isnan(X_test_scaled)] = 0
-    #
-    # 3. make a df to store the data
-    prob_out = pd.DataFrame(meta_df["testset"])
-    #
-    # 4. load dataset
-    test_dataset = torch.tensor(X_test_scaled, dtype=torch.float32)
-    safe_sampler = SafeBatchSampler(test_dataset, batch_size=8, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_sampler=safe_sampler, num_workers=2, pin_memory=True)
-    #
-    # 5. initiate same model architecture
-    model_path = "NNclf/nn_all.pt"
-    model = MetaNN(n_classes=n_classes_global)
-    checkpoint = torch.load(model_path, weights_only=True, map_location=torch.device('cpu'))
-    model.load_state_dict(checkpoint)
-    model.to(device)
-    #
-    # 6. CRITICAL: Set the model to evaluation mode
-    model.eval()
-    probs = []
-    preds = []
-    with torch.no_grad():
-        for xb in test_loader:
-            xb = xb.to(device)
-            logits = model(xb)
-            # Apply Softmax to convert logits to probabilities
-            probabilities = torch.softmax(logits, dim=1)
-            probs.append(probabilities.cpu().numpy())
-            predictions = torch.argmax(logits, dim=1)
-            preds.append(predictions.cpu().numpy())
-    prob_out["pred_label"] = np.concatenate(preds)
-    prob_out[labels] = np.vstack(probs)
-    pred_outpath = f"{out_dir}Predictions/"
-    os.makedirs(pred_outpath, exist_ok=True)
-    needed_columns = ["testset"] + labels
-    df_out = prob_out[needed_columns]
-    df_out.to_csv(f"{pred_outpath}prob_all.tsv", sep="\t", index=False, header=True)
-    print("Finish meta-model! ")
+        """ Get prediction hierarchy """
+        hierarch_list = [['Metazoa', 'Vertebrate', 'Aves'], ['Algae', 'Chlorophyta', 'Chlorellaceae'], ['Amoeba', 'Amoebozoa', 'Discosea'], ['Heteroflagellate', 'Amoeboid', 'Discoba'], ['Algae', 'Chlorophyta', 'Otherchlorophyta'], ['Algae', 'Haptophyta', 'Coccolithophyceae'], ['Algae', 'Haptophyta', 'Otherhaptophyta'], ['Metazoa', 'Vertebrate', 'Mammalia'], ['Heteroflagellate', 'Nonamoeboid', 'Choanocafe'], ['Algae', 'Otheralgae', 'Stramenopile'], ['Algae', 'Chlorophyta', 'Bathycoccaceae'], ['Algae', 'Brownalgae', 'Phaeophyceae'], ['Fungi', 'Chytridiomycota', 'Chytridiomycetes'], ['Metazoa', 'Invertebrate', 'Insecta'], ['Metazoa', 'Invertebrate', 'Otherinvertebrate'], ['Amoeba', 'Amoebozoa', 'Tubulinea'], ['Algae', 'Chlorophyta', 'Mamiellaceae'], ['Metazoa', 'Vertebrate', 'Othervertebrate'], ['Fungi', 'Blastocladiomycota', 'Blastocladiomycetes'], ['Metazoa', 'Invertebrate', 'Malacostraca'], ['Algae', 'Haptophyta', 'Prymnesiaceae']]
+        node_dict = {'Algae': [13, 3, 6, 19, 1, 14, 11, 18, 17], 'Chlorophyta': [13, 3, 1, 11], 'Otherchlorophyta': [13], 'Chlorellaceae': [3], 'Fungi': [5, 2], 'Chytridiomycota': [5], 'Chytridiomycetes': [5], 'Metazoa': [12, 10, 16, 15, 0, 9], 'Vertebrate': [12, 16, 0], 'Mammalia': [12], 'Invertebrate': [10, 15, 9], 'Malacostraca': [10], 'Othervertebrate': [16], 'Amoeba': [20, 8], 'Amoebozoa': [20, 8], 'Tubulinea': [20], 'Haptophyta': [6, 14, 18], 'Coccolithophyceae': [6], 'Heteroflagellate': [7, 4], 'Amoeboid': [7], 'Discoba': [7], 'Otheralgae': [19], 'Stramenopile': [19], 'Bathycoccaceae': [1], 'Otherhaptophyta': [14], 'Mamiellaceae': [11], 'Nonamoeboid': [4], 'Choanocafe': [4], 'Otherinvertebrate': [15], 'Blastocladiomycota': [2], 'Blastocladiomycetes': [2], 'Prymnesiaceae': [18], 'Discosea': [8], 'Aves': [0], 'Insecta': [9], 'Brownalgae': [17], 'Phaeophyceae': [17]}
+        # bottom-up
+        prob_out_levels_BU = climbing_inference(prob_out, hierarch_list, node_dict, 0.75)
+        prob_out_levels_BU_out = prob_out_levels_BU[["testset", "pred_hierarchy"] + [f"level{i}_prob" for i in range(len(hierarch_list[0]))]]
+        prob_out_levels_BU_out.to_csv(f"{pred_outpath}h_prob_all.tsv", sep="\t", index=False, header=True)
 
-    """ Get prediction hierarchy """
-    hierarch_list = [['Metazoa', 'Vertebrate', 'Aves'], ['Algae', 'Chlorophyta', 'Chlorellaceae'], ['Amoeba', 'Amoebozoa', 'Discosea'], ['Heteroflagellate', 'Amoeboid', 'Discoba'], ['Algae', 'Chlorophyta', 'Otherchlorophyta'], ['Algae', 'Haptophyta', 'Coccolithophyceae'], ['Algae', 'Haptophyta', 'Otherhaptophyta'], ['Metazoa', 'Vertebrate', 'Mammalia'], ['Heteroflagellate', 'Nonamoeboid', 'Choanocafe'], ['Algae', 'Otheralgae', 'Stramenopile'], ['Algae', 'Chlorophyta', 'Bathycoccaceae'], ['Algae', 'Brownalgae', 'Phaeophyceae'], ['Fungi', 'Chytridiomycota', 'Chytridiomycetes'], ['Metazoa', 'Invertebrate', 'Insecta'], ['Metazoa', 'Invertebrate', 'Otherinvertebrate'], ['Amoeba', 'Amoebozoa', 'Tubulinea'], ['Algae', 'Chlorophyta', 'Mamiellaceae'], ['Metazoa', 'Vertebrate', 'Othervertebrate'], ['Fungi', 'Blastocladiomycota', 'Blastocladiomycetes'], ['Metazoa', 'Invertebrate', 'Malacostraca'], ['Algae', 'Haptophyta', 'Prymnesiaceae']]
-    node_dict = {'Algae': [13, 3, 6, 19, 1, 14, 11, 18, 17], 'Chlorophyta': [13, 3, 1, 11], 'Otherchlorophyta': [13], 'Chlorellaceae': [3], 'Fungi': [5, 2], 'Chytridiomycota': [5], 'Chytridiomycetes': [5], 'Metazoa': [12, 10, 16, 15, 0, 9], 'Vertebrate': [12, 16, 0], 'Mammalia': [12], 'Invertebrate': [10, 15, 9], 'Malacostraca': [10], 'Othervertebrate': [16], 'Amoeba': [20, 8], 'Amoebozoa': [20, 8], 'Tubulinea': [20], 'Haptophyta': [6, 14, 18], 'Coccolithophyceae': [6], 'Heteroflagellate': [7, 4], 'Amoeboid': [7], 'Discoba': [7], 'Otheralgae': [19], 'Stramenopile': [19], 'Bathycoccaceae': [1], 'Otherhaptophyta': [14], 'Mamiellaceae': [11], 'Nonamoeboid': [4], 'Choanocafe': [4], 'Otherinvertebrate': [15], 'Blastocladiomycota': [2], 'Blastocladiomycetes': [2], 'Prymnesiaceae': [18], 'Discosea': [8], 'Aves': [0], 'Insecta': [9], 'Brownalgae': [17], 'Phaeophyceae': [17]}
-    # bottom-up
-    prob_out_levels_BU = climbing_inference(prob_out, hierarch_list, node_dict, 0.75)
-    prob_out_levels_BU.to_csv(f"{pred_outpath}h_prob_all.tsv", sep="\t", index=False, header=True)
-
-    # Create a dictionary for storing predictions
-    all_pred_BU = defaultdict(dict)
-    sorted_hierarch_list = sorted(hierarch_list)
-    flat_hierarch_list = flatten_nested(sorted_hierarch_list)
-    for label in flat_hierarch_list:
+        # Create a dictionary for storing predictions
+        all_pred_BU = defaultdict(dict)
+        sorted_hierarch_list = sorted(hierarch_list)
+        flat_hierarch_list = flatten_nested(sorted_hierarch_list)
+        for label in flat_hierarch_list:
+            for id in sample_ls:
+                all_pred_BU[id][label] = 0
+        ## add a root
         for id in sample_ls:
-            all_pred_BU[id][label] = 0
-    ## add a root
-    for id in sample_ls:
-        all_pred_BU[id]["root"] = 0
-    
-    # Create a dictionary for storing predictions of listed samples
-    samples_pred_BU = defaultdict(lambda: defaultdict(dict))
-    rev_hierarch_list = [sublist[::-1] for sublist in sorted_hierarch_list]
-    for i in range(len(hierarch_list[0])):
-        labels = [sublist[i] for sublist in rev_hierarch_list]
-        for id in set(prob_out["testset"]): ##sample_ids
-            for label in labels:
-                samples_pred_BU[id][i][label] = 0
-		
-    # Count predictions
-    count_predictions_BU(prob_out_levels_BU, all_pred_BU, samples_pred_BU)
+            all_pred_BU[id]["root"] = 0
+        
+        # Create a dictionary for storing predictions of listed samples
+        samples_pred_BU = defaultdict(lambda: defaultdict(dict))
+        rev_hierarch_list = [sublist[::-1] for sublist in sorted_hierarch_list]
+        for i in range(len(hierarch_list[0])):
+            labels = [sublist[i] for sublist in rev_hierarch_list]
+            for id in set(prob_out["testset"]): ##sample_ids
+                for label in labels:
+                    samples_pred_BU[id][i][label] = 0
+            
+        # Count predictions
+        count_predictions_BU(prob_out_levels_BU, all_pred_BU, samples_pred_BU)
 
-    """ Output counts by levels """
-    samples = prob_out_levels_BU.index.tolist()[:len(sample_ls)]
-    by_level = defaultdict(dict)
-    for sample_id in samples_pred_BU:
-        for level in samples_pred_BU[sample_id]:
-            by_level[level][sample_id] = samples_pred_BU[sample_id][level]
-    # Save each k to a file
-    for level, data in by_level.items():
-        df = pd.DataFrame(data).T
-        df = df.reindex(samples, fill_value=0)
-        df.to_csv(f"{pred_outpath}pred_out_level{level}.tsv", sep='\t', index=True, header=True)
+        """ Output counts by levels """
+        samples = prob_out_levels_BU.index.tolist()[:len(sample_ls)]
+        by_level = defaultdict(dict)
+        for sample_id in samples_pred_BU:
+            for level in samples_pred_BU[sample_id]:
+                by_level[level][sample_id] = samples_pred_BU[sample_id][level]
+        # Save each k to a file
+        for level, data in by_level.items():
+            df = pd.DataFrame(data).T
+            df = df.reindex(samples, fill_value=0)
+            df.to_csv(f"{pred_outpath}pred_out_level{level}.tsv", sep='\t', index=True, header=True)
 
 if __name__ == '__main__':
 	main()
