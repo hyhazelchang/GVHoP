@@ -32,19 +32,17 @@ ROOT = Path(__file__).resolve().parent
 ########################################
 ## Giant Virus-Host Predictor (GVHoP) ##
 ########################################
-GVHoP.py
+gvhop
 v1 2026
 
 Author: Hsin-Ying Chang
 Email: hyhazelchang@gmail.com
 
 Usage:
-chmod u+x GVHoP.py
-./GVHoP.py --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=20
+chmod u+x gvhop
+./gvhop --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=20
 
-GVHoP --in_dir=example_MAGs/ --in_file_ext=faa --db_dir=GVHoP_database_v1.0/ --sample_ls=source_data/example_inputs/sample.ls --out_dir=gvhop_out/ --cpu=20
-
-# Before running the GVHoP.py, please make sure to download the database, pre-trained models and check directory in GVHoP.py.
+# Before running the GVHoP.py, please make sure to download the database, pre-trained models and check directory in ./gvhop
 """
 
 def validate_inputs(
