@@ -61,7 +61,7 @@ def cmd_hmmer(in_dir, in_file_ext, out_dir, db_dir, cpu):
         count += 1
         file_name = file.replace(in_dir, "")
         file_name = file_name.replace(f".{in_file_ext}", "")
-        hmm_cmd.append(f"hmmsearch --cpu {cpu} -E 1e-5 --domtblout {out_dir}hmmsearch/{file_name}.domout {db_dir}/GVHoP_GVOGs.hmm {file}")
+        hmm_cmd.append(f"hmmsearch --cpu {cpu} -E 1e-5 --domtblout {out_dir}hmmsearch/{file_name}.domout {db_dir}GVHoP_GVOGs.hmm {file}")
     return hmm_cmd
 
 def cmd_diamond(in_dir, in_file_ext, out_dir, db_dir, cpu):
@@ -73,7 +73,7 @@ def cmd_diamond(in_dir, in_file_ext, out_dir, db_dir, cpu):
         count += 1
         file_name = file.replace(in_dir, "")
         file_name = file_name.replace(f".{in_file_ext}", "")
-        diamond_cmd.append(f"diamond blastp -d {db_dir}/GVHoP_GVEUKs.dmnd -q {file} -o {out_dir}diamond_blastp/{file_name}.txt -f 6 -p {cpu} --evalue 1e-5")
+        diamond_cmd.append(f"diamond blastp -d {db_dir}GVHoP_GVEUKs.dmnd -q {file} -o {out_dir}diamond_blastp/{file_name}.txt -f 6 -p {cpu} --evalue 1e-5")
     return diamond_cmd
 
 def execute_cmd(cmd, job_name):
@@ -561,7 +561,7 @@ def main():
         count_predictions_BU(prob_out_levels_BU, all_pred_BU, samples_pred_BU)
 
         """ Output counts by levels """
-        samples = prob_out_levels_BU.index.tolist()[:len(sample_ls)]
+        samples = prob_out_levels_BU["testset"].tolist()[:len(sample_ls)]
         by_level = defaultdict(dict)
         for sample_id in samples_pred_BU:
             for level in samples_pred_BU[sample_id]:
